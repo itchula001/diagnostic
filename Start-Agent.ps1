@@ -1,21 +1,25 @@
-# Windows Diagnostic Local Agent V1.5
+# ==========================================
+# Windows Diagnostic Local Agent V1.5.3
+# ==========================================
+
 $port = 8765
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://127.0.0.1:$port/")
 $listener.Start()
 
-Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "✅ Local Diagnostic Agent V1.5 Started!" -ForegroundColor Green
+Write-Host "" -ForegroundColor Cyan
+Write-Host "✅ Local Diagnostic Agent V1.5.3 Started!" -ForegroundColor Green
 Write-Host "Listening on http://127.0.0.1:$port" -ForegroundColor Yellow
-Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host "" -ForegroundColor Cyan
 
-# สร้างโฟลเดอร์สำหรับเก็บ History ใน LocalAppData เพื่อให้จำประวัติได้แม้จะรันจากเว็บ (RAM) โดยตรง
+# สร้างโฟลเดอร์สำหรับเก็บ History ใน LocalAppData
 $AgentDir = Join-Path $env:LOCALAPPDATA "IT_Diagnostic_Agent"
-if (-not (Test-Path $AgentDir)) { New-Item -ItemType Directory -Force -Path $AgentDir | Out-Null }
+if (-not (Test-Path $AgentDir)) {
+    New-Item -ItemType Directory -Force -Path $AgentDir | Out-Null
+}
 $historyFilePath = Join-Path $AgentDir "history.json"
 
 [array]$global:HistoryLog = @()
-
 if (Test-Path $historyFilePath) {
     try {
         $rawJson = Get-Content $historyFilePath -Raw -ErrorAction SilentlyContinue
@@ -23,7 +27,9 @@ if (Test-Path $historyFilePath) {
             $parsed = $rawJson | ConvertFrom-Json
             if ($null -ne $parsed) { $global:HistoryLog = @($parsed) }
         }
-    } catch { $global:HistoryLog = @() }
+    } catch {
+        $global:HistoryLog = @()
+    }
 }
 
 function Save-HistoryToFile {
@@ -32,6 +38,7 @@ function Save-HistoryToFile {
     } catch {}
 }
 
+# รายชื่อ Process ระบบที่ป้องกันไม่ให้เผลอกด Kill
 $ProtectedList = @("System", "Idle", "Memory Compression", "explorer", "svchost", "csrss", "smss", "wininit", "services", "lsass", "winlogon", "dwm", "sihost", "taskhostw")
 
 try {
@@ -39,8 +46,8 @@ try {
         $context = $listener.GetContext()
         $request = $context.Request
         $response = $context.Response
-        
-        # CORS ให้รับคำสั่งจาก Cloud Website ของคุณได้
+
+        # CORS ให้รับคำสั่งจาก Cloud Website ได้
         $response.Headers.Add("Access-Control-Allow-Origin", "*")
         $response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         $response.Headers.Add("Access-Control-Allow-Headers", "Content-Type")
@@ -158,65 +165,7 @@ try {
                     }
                 }
 
-                # 5. Domain Secure Channel Check
-                $sysObj = Get-WmiObject Win32_ComputerSystem
-                if ($sysObj.PartOfDomain) {
-                    try {
-                        $scOk = Test-ComputerSecureChannel -ErrorAction SilentlyContinue
-                        if (-not $scOk) {
-                            $problems += @{
-                                id = "SECURE_CHANNEL_BROKEN"; title = "Domain Secure Channel Broken"; severity = "critical"
-                                description = "Trust relationship between workstation and domain has failed."
-                                evidence = @("Test-ComputerSecureChannel: FAILED", "Domain: $($sysObj.Domain)")
-                                possibleCauses = @("Password desync with Active Directory", "Expired AD account")
-                                recommendedFix = "repair-secure-channel"
-                            }
-                        }
-                    } catch {}
-                }
-
-                # 6. Event Logs Check
-                try {
-                    $shutdownEvent = Get-WinEvent -FilterHashtable @{LogName='System'; Id=6008} -MaxEvents 1 -ErrorAction SilentlyContinue
-                    if ($shutdownEvent -and $shutdownEvent.TimeCreated -gt (Get-Date).AddDays(-1)) {
-                        $problems += @{
-                            id = "UNEXPECTED_SHUTDOWN"; title = "Recent Unexpected Shutdown"; severity = "warning"
-                            description = "System shut down unexpectedly within the last 24 hours."
-                            evidence = @("Event ID: 6008", "Time: $($shutdownEvent.TimeCreated.ToString('yyyy-MM-dd HH:mm'))")
-                            possibleCauses = @("Power interruption", "BSOD / System Crash")
-                            recommendedFix = "gpupdate"
-                        }
-                    }
-                } catch {}
-
-                # 7. Hardware Health (Disk & Battery)
-                try {
-                    $diskHealth = Get-PhysicalDisk -ErrorAction SilentlyContinue | Where-Object { $_.OperationalStatus -ne "OK" }
-                    if ($diskHealth) {
-                        $problems += @{
-                            id = "HARDWARE_DISK_FAILING"; title = "Physical Disk Hardware Error"; severity = "critical"
-                            description = "Physical drive reporting abnormal operational status."
-                            evidence = @("Device: $($diskHealth.FriendlyName)", "Status: $($diskHealth.OperationalStatus)")
-                            possibleCauses = @("Bad sectors", "Hardware failure imminent")
-                            recommendedFix = "" 
-                        }
-                    }
-                } catch {}
-
-                try {
-                    $battery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue
-                    if ($battery -and $battery.EstimatedChargeRemaining -lt 15 -and $battery.BatteryStatus -ne 2) {
-                        $problems += @{
-                            id = "BATTERY_CRITICAL_LOW"; title = "Battery Level Critically Low"; severity = "warning"
-                            description = "Laptop battery is below 15% and not charging."
-                            evidence = @("Charge: $($battery.EstimatedChargeRemaining)%", "Status: Discharging")
-                            possibleCauses = @("Charger unplugged", "Power adapter failure")
-                            recommendedFix = "" 
-                        }
-                    }
-                } catch {}
-
-                # 8. Security & Firewall
+                # 5. Security & Firewall Check
                 try {
                     $defender = Get-MpComputerStatus -ErrorAction SilentlyContinue
                     if ($defender) {
@@ -229,31 +178,33 @@ try {
                                 recommendedFix = "enable-defender"
                             }
                         }
-                        if ($defender.AntivirusSignatureAge -gt 7) {
-                            $problems += @{
-                                id = "SECURITY_AV_OUTDATED"; title = "Antivirus Signatures Outdated"; severity = "warning"
-                                description = "Antivirus definitions have not been updated for over 7 days."
-                                evidence = @("Signature Age: $($defender.AntivirusSignatureAge) days")
-                                possibleCauses = @("No internet connection", "Windows Update blocked")
-                                recommendedFix = "update-av-signatures"
-                            }
-                        }
                     }
                 } catch {}
 
-                try {
-                    $fw = Get-NetFirewallProfile -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq $false }
-                    if ($fw) {
-                        $disabledProfiles = ($fw | Select-Object -ExpandProperty Name) -join ", "
-                        $problems += @{
-                            id = "SECURITY_FIREWALL_DISABLED"; title = "Windows Firewall Disabled"; severity = "warning"
-                            description = "One or more Firewall profiles are turned off."
-                            evidence = @("Disabled Profiles: $disabledProfiles")
-                            possibleCauses = @("Disabled for testing", "GPO change")
-                            recommendedFix = "enable-firewall"
-                        }
+                # 6. High RAM Usage Check
+                $os = Get-CimInstance Win32_OperatingSystem
+                $ramPercent = [math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100)
+                if ($ramPercent -gt 85) {
+                    $problems += @{
+                        id = "RAM_HIGH"; title = "High Memory (RAM) Usage ($ramPercent%)"; severity = "warning"
+                        description = "System memory is running critically low."
+                        evidence = @("Usage at $ramPercent%")
+                        possibleCauses = @("Too many heavy applications running", "Memory leak")
+                        recommendedFix = "Clear-Memory"
                     }
-                } catch {}
+                }
+
+                # 7. High CPU Usage Check
+                $cpu = Get-WmiObject Win32_Processor | Measure-Object -Property LoadPercentage -Average | Select-Object -ExpandProperty Average
+                if ($cpu -gt 90) {
+                    $problems += @{
+                        id = "CPU_HIGH"; title = "High CPU Usage ($cpu%)"; severity = "critical"
+                        description = "Processor is under heavy load."
+                        evidence = @("Usage at $cpu%")
+                        possibleCauses = @("Background processing", "Runaway process")
+                        recommendedFix = ""
+                    }
+                }
 
                 $responseData = @{ problems = $problems } | ConvertTo-Json -Depth 3
             }
@@ -274,16 +225,13 @@ try {
                         "flush-dns" { Clear-DnsClientCache -ErrorAction SilentlyContinue; $msg = "DNS cache flushed." }
                         "renew-ip" { Start-Process "ipconfig" -ArgumentList "/renew" -NoNewWindow -Wait; $msg = "IP renewed successfully." }
                         "gpupdate" { Start-Process "gpupdate" -ArgumentList "/force" -NoNewWindow -Wait; $msg = "Group Policy updated." }
-                        "repair-secure-channel" { 
-                            $repairRes = Test-ComputerSecureChannel -Repair -ErrorAction Stop
-                            if ($repairRes) { $msg = "Secure channel repaired." } else { throw "Failed to repair secure channel." }
-                        }
                         "enable-defender" { Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction Stop; $msg = "Windows Defender enabled." }
-                        "update-av-signatures" { Update-MpSignature -ErrorAction Stop; $msg = "Antivirus signatures updated." }
-                        "enable-firewall" { Set-NetFirewallProfile -All -Enabled True -ErrorAction Stop; $msg = "Firewall profiles enabled." }
                         default { $success = $false; $msg = "Action not in Whitelist." }
                     }
-                } catch { $success = $false; $msg = $_.Exception.Message }
+                } catch { 
+                    $success = $false
+                    $msg = $_.Exception.Message 
+                }
 
                 $resultLabel = if ($success) { if ($verificationStatus) { $verificationStatus } else { "EXECUTED" } } else { "FAILED" }
 
@@ -340,5 +288,8 @@ try {
             $response.Close()
         }
     }
-} catch {} finally { if ($listener.IsListening) { $listener.Stop() } }
-```
+} catch {
+    Write-Host "Error: $_" -ForegroundColor Red
+} finally {
+    if ($listener.IsListening) { $listener.Stop() }
+}

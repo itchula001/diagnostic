@@ -27,7 +27,7 @@
             </div>
         </div>
 
-        <!-- Agent Not Found Banner (แสดงเมื่อเครื่องยังไม่ได้เปิด Agent) -->
+        <!-- Agent Not Found Banner -->
         <div id="agent-launcher-banner" class="card card-custom p-4 bg-white border-warning mb-4" style="display: none;">
             <div class="d-flex align-items-center mb-2">
                 <span class="fs-3 me-2">⚠️</span>
@@ -35,7 +35,6 @@
             </div>
             <p class="text-muted small">เพื่อตรวจเช็กและแก้ไขเครื่องนี้โดยไม่ต้องพก Flash Drive ให้คัดลอกคำสั่งด้านล่างไปวางใน <b>PowerShell (Admin)</b> บนเครื่องนี้เพื่อเริ่มใช้งาน:</p>
             <div class="launcher-box d-flex justify-content-between align-items-center mb-2">
-                <!-- IMPORTANT: เปลี่ยน URL ตรงนี้เป็น URL จริงที่คุณนำไฟล์ Start-Agent.ps1 ไปฝากไว้ -->
                 <span id="cmd-text">iwr -useb https://itchula001.github.io/diagnostic/Start-Agent.ps1 | iex</span>
                 <button class="btn btn-sm btn-success fw-bold ms-3" onclick="copyLauncher()">📋 Copy Command</button>
             </div>
@@ -276,8 +275,10 @@
                 body: JSON.stringify({ action: action, title: title, verificationStatus: verdictText })
             });
 
-            // 4. Show Modal
+            // 4. Show Modal and Refresh Data
             showVerificationModal({ id: problemId, title: title, evidence: evidence }, action, isVerifiedSuccess);
+            
+            // รีเฟรชข้อมูลทุกส่วนหลังแก้ปัญหา
             loadMetrics();
             loadHistory();
             runDiagnose();
@@ -333,7 +334,16 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: id, name: name })
             });
-            if (res && res.success) { loadProcesses(); loadMetrics(); }
+            
+            if (res && res.success) { 
+                // รีเฟรชข้อมูลแบบ Real-time หลังจาก Kill Process ทันที
+                loadProcesses(); 
+                loadMetrics(); 
+                loadHistory(); 
+                runDiagnose(); 
+            } else {
+                alert(`Failed to kill process: ${res ? res.message : 'Unknown error'}`);
+            }
         }
 
         async function loadHistory() {
@@ -346,6 +356,7 @@
                 return;
             }
 
+            // แสดงประวัติล่าสุดขึ้นก่อน
             data.slice().reverse().forEach(h => {
                 let badge = 'bg-secondary';
                 if (h.result === 'VERIFIED_SUCCESS' || h.result === 'SUCCESS') badge = 'bg-success';
@@ -372,12 +383,13 @@
         function refreshAll() {
             loadMetrics();
             runDiagnose();
+            loadProcesses();
+            loadHistory();
         }
 
-        // เริ่มโหลดข้อมูลทุก 5 วินาที
+        // Auto-refresh metrics every 5 seconds
         refreshAll();
         setInterval(loadMetrics, 5000);
     </script>
 </body>
 </html>
-```
