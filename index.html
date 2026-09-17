@@ -3,393 +3,1469 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="IT Field Diagnostic Portal - Local Windows diagnostics and remediation">
     <title>IT Field Diagnostic Portal</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
     <style>
-        body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, sans-serif; }
-        .card-custom { border-radius: 10px; border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 20px; }
-        .severity-critical { border-left: 5px solid #dc3545; }
-        .severity-warning { border-left: 5px solid #ffc107; }
-        .launcher-box { background-color: #212529; color: #00ff66; padding: 15px; border-radius: 8px; font-family: monospace; }
+        :root {
+            --app-bg: #f4f7fb;
+            --card-radius: 14px;
+            --shadow: 0 5px 20px rgba(15, 23, 42, .07);
+        }
+
+        body {
+            background: var(--app-bg);
+            font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+            color: #172033;
+        }
+
+        .app-container {
+            max-width: 1180px;
+        }
+
+        .card-custom {
+            border: 0;
+            border-radius: var(--card-radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            transition: transform .15s ease, box-shadow .15s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 26px rgba(15, 23, 42, .1);
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            line-height: 1;
+        }
+
+        .metric-bar {
+            height: 6px;
+            border-radius: 10px;
+            background: #e9edf3;
+            overflow: hidden;
+        }
+
+        .metric-bar > div {
+            height: 100%;
+            width: 0;
+            transition: width .4s ease;
+        }
+
+        .severity-critical {
+            border-left: 5px solid #dc3545 !important;
+        }
+
+        .severity-warning {
+            border-left: 5px solid #ffc107 !important;
+        }
+
+        .severity-info {
+            border-left: 5px solid #0d6efd !important;
+        }
+
+        .launcher-box {
+            background: #111827;
+            color: #5cff93;
+            padding: 14px;
+            border-radius: 10px;
+            font-family: Consolas, "Courier New", monospace;
+            word-break: break-all;
+        }
+
+        .launcher-command {
+            flex: 1;
+            user-select: all;
+        }
+
+        .problem-card {
+            transition: box-shadow .15s ease;
+        }
+
+        .problem-card:hover {
+            box-shadow: 0 7px 22px rgba(15, 23, 42, .09);
+        }
+
+        .nav-pills .nav-link {
+            border-radius: 10px;
+            color: #495057;
+        }
+
+        .nav-pills .nav-link.active {
+            box-shadow: 0 3px 10px rgba(13, 110, 253, .18);
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+            background: currentColor;
+        }
+
+        .table-responsive {
+            border-radius: 10px;
+        }
+
+        .empty-state {
+            padding: 45px 20px;
+            text-align: center;
+            color: #6c757d;
+        }
+
+        .process-name {
+            max-width: 240px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .toast-container {
+            z-index: 2000;
+        }
+
+        .small-mono {
+            font-family: Consolas, "Courier New", monospace;
+        }
+
+        @media (max-width: 768px) {
+            .header-actions {
+                margin-top: 15px;
+                width: 100%;
+            }
+
+            .header-actions .btn {
+                flex: 1;
+            }
+
+            .metric-value {
+                font-size: 1.65rem;
+            }
+        }
     </style>
 </head>
+
 <body class="py-4">
-    <div class="container" style="max-width: 1000px;">
-        <!-- Header -->
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <div>
-                <h3 class="fw-bold m-0">🌐 Cloud IT Diagnostic Portal</h3>
-                <small class="text-muted">Local Agent Status: <span id="agent-status" class="badge bg-secondary">Connecting...</span></small>
-            </div>
-            <div>
-                <button class="btn btn-primary me-2" onclick="refreshAll()">🔄 Refresh</button>
-                <button class="btn btn-outline-danger" onclick="stopAgent()">🛑 Stop Agent</button>
+
+<div class="container app-container">
+
+    <!-- HEADER -->
+    <header class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-1">🌐 Cloud IT Diagnostic Portal</h3>
+            <div class="small text-muted">
+                Local Agent:
+                <span id="agent-status" class="badge bg-secondary">
+                    <span class="status-dot"></span>Connecting...
+                </span>
+                <span id="agent-version" class="ms-2"></span>
             </div>
         </div>
 
-        <!-- Agent Not Found Banner -->
-        <div id="agent-launcher-banner" class="card card-custom p-4 bg-white border-warning mb-4" style="display: none;">
-            <div class="d-flex align-items-center mb-2">
-                <span class="fs-3 me-2">⚠️</span>
-                <h5 class="fw-bold m-0 text-dark">ยังไม่ได้เปิดใช้งาน Local Agent บนเครื่องนี้</h5>
-            </div>
-            <p class="text-muted small">เพื่อตรวจเช็กและแก้ไขเครื่องนี้โดยไม่ต้องพก Flash Drive ให้คัดลอกคำสั่งด้านล่างไปวางใน <b>PowerShell (Admin)</b> บนเครื่องนี้เพื่อเริ่มใช้งาน:</p>
-            <div class="launcher-box d-flex justify-content-between align-items-center mb-2">
-                <span id="cmd-text">iwr -useb https://itchula001.github.io/diagnostic/Start-Agent.ps1 | iex</span>
-                <button class="btn btn-sm btn-success fw-bold ms-3" onclick="copyLauncher()">📋 Copy Command</button>
-            </div>
-            <small class="text-muted">* เมื่อคำสั่งทำงานแล้ว หน้าเว็บนี้จะเปลี่ยนสถานะเป็นสีเขียวโดยอัตโนมัติ ภายใน 5 วินาที</small>
+        <div class="d-flex gap-2 header-actions">
+            <button id="refresh-btn" class="btn btn-primary">
+                🔄 Refresh
+            </button>
+            <button id="stop-agent-btn" class="btn btn-outline-danger">
+                🛑 Stop Agent
+            </button>
+        </div>
+    </header>
+
+    <!-- AGENT OFFLINE -->
+    <section id="agent-launcher-banner"
+             class="card card-custom p-4 bg-white border-warning"
+             style="display:none;">
+
+        <div class="d-flex align-items-center mb-2">
+            <span class="fs-3 me-2">⚠️</span>
+            <h5 class="fw-bold m-0">Local Agent ยังไม่ทำงาน</h5>
         </div>
 
-        <!-- System Overview -->
-        <div class="row text-center mb-2">
+        <p class="text-muted small mb-3">
+            เปิด PowerShell บนเครื่องหน้างาน
+            แล้วรันคำสั่งด้านล่างเพื่อเปิด Local Diagnostic Agent
+        </p>
+
+        <div class="launcher-box d-flex flex-column flex-md-row gap-3 align-items-md-center">
+            <code id="cmd-text" class="launcher-command">
+                iwr -useb https://itchula001.github.io/diagnostic/Start-Agent.ps1 | iex
+            </code>
+
+            <button id="copy-command-btn" class="btn btn-success fw-bold text-nowrap">
+                📋 Copy Command
+            </button>
+        </div>
+
+        <div class="small text-muted mt-2">
+            หลังเปิด Agent แล้วกด Refresh หรือรอระบบตรวจสอบอัตโนมัติ
+        </div>
+    </section>
+
+    <!-- MACHINE INFO -->
+    <section id="machine-info-card"
+             class="card card-custom bg-white p-3"
+             style="display:none;">
+
+        <div class="row g-3">
             <div class="col-md-4">
-                <div class="card card-custom p-3">
-                    <span class="text-muted">CPU Usage</span>
-                    <h2 class="fw-bold mt-2" id="cpu-val">- %</h2>
-                </div>
+                <div class="small text-muted">Computer</div>
+                <div id="machine-name" class="fw-bold">-</div>
             </div>
+
             <div class="col-md-4">
-                <div class="card card-custom p-3">
-                    <span class="text-muted">RAM Usage</span>
-                    <h2 class="fw-bold mt-2" id="ram-val">- %</h2>
-                    <small class="text-muted" id="ram-free">Free: - GB</small>
-                </div>
+                <div class="small text-muted">Windows</div>
+                <div id="machine-os" class="fw-bold">-</div>
             </div>
+
             <div class="col-md-4">
-                <div class="card card-custom p-3">
-                    <span class="text-muted">Disk C: Usage</span>
-                    <h2 class="fw-bold mt-2" id="disk-val">- %</h2>
-                    <small class="text-muted" id="disk-free">Free: - GB</small>
+                <div class="small text-muted">Last Update</div>
+                <div id="last-update" class="fw-bold">-</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- METRICS -->
+    <section class="row text-center mb-2">
+
+        <div class="col-md-4">
+            <div class="card card-custom metric-card p-3 bg-white">
+                <div class="text-muted">CPU Usage</div>
+                <div id="cpu-val" class="fw-bold metric-value mt-2">-</div>
+                <div class="metric-bar mt-3">
+                    <div id="cpu-bar"></div>
                 </div>
+                <small id="cpu-detail" class="text-muted d-block mt-2">
+                    Waiting for agent...
+                </small>
             </div>
         </div>
 
-        <!-- Navigation Tabs -->
-        <ul class="nav nav-pills mb-3">
-            <li class="nav-item">
-                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#content-diag">🔍 Diagnostic Engine</button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#content-proc" onclick="loadProcesses()">⚡ Process Manager</button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#content-hist" onclick="loadHistory()">📜 History Log</button>
-            </li>
-        </ul>
+        <div class="col-md-4">
+            <div class="card card-custom metric-card p-3 bg-white">
+                <div class="text-muted">RAM Usage</div>
+                <div id="ram-val" class="fw-bold metric-value mt-2">-</div>
+                <div class="metric-bar mt-3">
+                    <div id="ram-bar"></div>
+                </div>
+                <small id="ram-free" class="text-muted d-block mt-2">
+                    Free: -
+                </small>
+            </div>
+        </div>
 
-        <div class="tab-content">
-            <!-- Diagnostic Tab -->
-            <div class="tab-pane fade show active" id="content-diag">
-                <div class="card card-custom p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="col-md-4">
+            <div class="card card-custom metric-card p-3 bg-white">
+                <div class="text-muted">Disk C: Usage</div>
+                <div id="disk-val" class="fw-bold metric-value mt-2">-</div>
+                <div class="metric-bar mt-3">
+                    <div id="disk-bar"></div>
+                </div>
+                <small id="disk-free" class="text-muted d-block mt-2">
+                    Free: -
+                </small>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- NAVIGATION -->
+    <ul class="nav nav-pills mb-3" role="tablist">
+
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active"
+                    data-bs-toggle="pill"
+                    data-bs-target="#content-diag"
+                    type="button">
+                🔍 Diagnostic
+            </button>
+        </li>
+
+        <li class="nav-item" role="presentation">
+            <button id="process-tab"
+                    class="nav-link"
+                    data-bs-toggle="pill"
+                    data-bs-target="#content-proc"
+                    type="button">
+                ⚡ Processes
+            </button>
+        </li>
+
+        <li class="nav-item" role="presentation">
+            <button id="history-tab"
+                    class="nav-link"
+                    data-bs-toggle="pill"
+                    data-bs-target="#content-hist"
+                    type="button">
+                📜 History
+            </button>
+        </li>
+
+    </ul>
+
+    <div class="tab-content">
+
+        <!-- DIAGNOSTIC -->
+        <div class="tab-pane fade show active" id="content-diag">
+
+            <div class="card card-custom bg-white p-4">
+
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                    <div>
                         <h5 class="fw-bold m-0">System Diagnostic Status</h5>
-                        <button class="btn btn-success" onclick="runDiagnose()">▶ Run Diagnostic</button>
+                        <small id="diagnostic-time" class="text-muted">
+                            Not checked yet
+                        </small>
                     </div>
-                    <div id="diag-container">
-                        <div class="text-center py-4 text-muted">Press 'Run Diagnostic' to analyze hardware and software status.</div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Process Manager Tab -->
-            <div class="tab-pane fade" id="content-proc">
-                <div class="card card-custom p-4">
-                    <h5 class="fw-bold mb-3">Top Resource Consumption</h5>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>Top CPU Applications</h6>
-                            <ul class="list-group" id="cpu-process-list"></ul>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Top RAM Applications</h6>
-                            <ul class="list-group" id="ram-process-list"></ul>
+                    <button id="diagnose-btn" class="btn btn-success">
+                        ▶ Run Diagnostic
+                    </button>
+                </div>
+
+                <div id="diag-summary" class="mb-3"></div>
+
+                <div id="diag-container">
+                    <div class="empty-state">
+                        <div class="fs-1 mb-2">🔎</div>
+                        <div class="fw-semibold">Ready to diagnose</div>
+                        <div class="small">
+                            กด Run Diagnostic เพื่อตรวจสอบระบบ
                         </div>
                     </div>
                 </div>
+
             </div>
 
-            <!-- History Tab -->
-            <div class="tab-pane fade" id="content-hist">
-                <div class="card card-custom p-4">
-                    <h5 class="fw-bold mb-3">Remediation History Log</h5>
-                    <table class="table table-hover align-middle">
+        </div>
+
+        <!-- PROCESSES -->
+        <div class="tab-pane fade" id="content-proc">
+
+            <div class="card card-custom bg-white p-4">
+
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                    <div>
+                        <h5 class="fw-bold mb-0">Top Resource Consumption</h5>
+                        <small class="text-muted">
+                            แสดงเฉพาะ Process ที่ใช้ทรัพยากรมากที่สุด
+                        </small>
+                    </div>
+
+                    <button id="refresh-process-btn" class="btn btn-outline-primary btn-sm">
+                        🔄 Refresh
+                    </button>
+                </div>
+
+                <div class="row g-4">
+
+                    <div class="col-lg-6">
+                        <h6 class="fw-bold mb-2">🔥 Top CPU</h6>
+                        <div id="cpu-process-list" class="list-group"></div>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <h6 class="fw-bold mb-2">🧠 Top RAM</h6>
+                        <div id="ram-process-list" class="list-group"></div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- HISTORY -->
+        <div class="tab-pane fade" id="content-hist">
+
+            <div class="card card-custom bg-white p-4">
+
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                    <div>
+                        <h5 class="fw-bold mb-0">Remediation History</h5>
+                        <small class="text-muted">
+                            ประวัติการแก้ไขและผลการตรวจสอบย้อนหลัง
+                        </small>
+                    </div>
+
+                    <button id="refresh-history-btn" class="btn btn-outline-primary btn-sm">
+                        🔄 Refresh
+                    </button>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
                         <thead class="table-light">
-                            <tr>
-                                <th>Timestamp</th>
-                                <th>Computer</th>
-                                <th>Problem</th>
-                                <th>Action</th>
-                                <th>Result</th>
-                            </tr>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Computer</th>
+                            <th>Problem</th>
+                            <th>Action</th>
+                            <th>Result</th>
+                        </tr>
                         </thead>
+
                         <tbody id="history-table-body">
-                            <tr><td colspan="5" class="text-center text-muted">No history found.</td></tr>
+                        <tr>
+                            <td colspan="5" class="empty-state">
+                                No history found.
+                            </td>
+                        </tr>
                         </tbody>
                     </table>
                 </div>
+
             </div>
+
+        </div>
+
+    </div>
+</div>
+
+<!-- VERIFICATION MODAL -->
+<div class="modal fade"
+     id="verificationModal"
+     tabindex="-1"
+     aria-hidden="true">
+
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">
+                    🛠 Verification Result
+                </h5>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close">
+                </button>
+            </div>
+
+            <div class="modal-body">
+
+                <div class="text-center mb-3" id="verdict-badge"></div>
+
+                <div class="card bg-light border-0 p-3 mb-2">
+                    <small class="text-danger fw-bold">🔴 BEFORE</small>
+                    <div id="v-before-desc" class="small mt-1"></div>
+                </div>
+
+                <div class="card bg-light border-0 p-3 mb-2">
+                    <small class="text-primary fw-bold">⚡ ACTION TAKEN</small>
+                    <div id="v-action-desc"
+                         class="small mt-1 small-mono"></div>
+                </div>
+
+                <div class="card bg-light border-0 p-3">
+                    <small class="text-success fw-bold">🟢 AFTER</small>
+                    <div id="v-after-desc" class="small mt-1"></div>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary btn-sm"
+                        data-bs-dismiss="modal">
+                    Close
+                </button>
+            </div>
+
         </div>
     </div>
+</div>
 
-    <!-- Verification Modal -->
-    <div class="modal fade" id="verificationModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold">🛠 Verification Result</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="text-center mb-3" id="verdict-badge"></div>
-                    <div class="card bg-light p-3 mb-2">
-                        <small class="text-danger fw-bold">🔴 BEFORE</small>
-                        <div id="v-before-desc" class="small mt-1"></div>
-                    </div>
-                    <div class="card bg-light p-3 mb-2">
-                        <small class="text-primary fw-bold">⚡ ACTION TAKEN</small>
-                        <div id="v-action-desc" class="small mt-1 font-monospace"></div>
-                    </div>
-                    <div class="card bg-light p-3">
-                        <small class="text-success fw-bold">🟢 AFTER</small>
-                        <div id="v-after-desc" class="small mt-1"></div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
+<!-- TOAST -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="app-toast"
+         class="toast"
+         role="alert"
+         aria-live="assertive"
+         aria-atomic="true">
+
+        <div class="toast-header">
+            <strong id="toast-title" class="me-auto">IT Diagnostic</strong>
+            <button type="button"
+                    class="btn-close"
+                    data-bs-dismiss="toast"
+                    aria-label="Close">
+            </button>
         </div>
+
+        <div id="toast-message" class="toast-body"></div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        const LOCAL_AGENT_URL = 'http://127.0.0.1:8765';
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-        async function fetchAPI(endpoint, options = {}) {
-            try {
-                const res = await fetch(`${LOCAL_AGENT_URL}${endpoint}`, options);
-                document.getElementById('agent-status').className = "badge bg-success";
-                document.getElementById('agent-status').innerText = "Online (Local)";
-                document.getElementById('agent-launcher-banner').style.display = "none";
-                return await res.json();
-            } catch (err) {
-                document.getElementById('agent-status').className = "badge bg-danger";
-                document.getElementById('agent-status').innerText = "Offline";
-                document.getElementById('agent-launcher-banner').style.display = "block";
-                return null;
-            }
+<script>
+"use strict";
+
+const LOCAL_AGENT_URL = "http://127.0.0.1:8765";
+const REQUEST_TIMEOUT = 7000;
+const METRICS_INTERVAL = 5000;
+const AGENT_CHECK_INTERVAL = 5000;
+
+let metricsTimer = null;
+let agentTimer = null;
+let isAgentOnline = false;
+let isBusy = false;
+
+const $ = id => document.getElementById(id);
+
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function formatNumber(value, decimals = 1) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "-";
+    return n.toFixed(decimals);
+}
+
+function formatPercent(value) {
+    const n = Math.max(0, Math.min(100, Number(value) || 0));
+    return `${Math.round(n)}%`;
+}
+
+function formatTimestamp(value) {
+    if (!value) return "-";
+
+    const date = new Date(value);
+
+    if (!Number.isNaN(date.getTime())) {
+        return date.toLocaleString("th-TH");
+    }
+
+    return String(value);
+}
+
+function showToast(message, type = "info", title = "IT Diagnostic") {
+    $("toast-title").textContent = title;
+    $("toast-message").textContent = message;
+
+    const toast = $("app-toast");
+
+    toast.classList.remove(
+        "text-bg-success",
+        "text-bg-danger",
+        "text-bg-warning",
+        "text-bg-info"
+    );
+
+    toast.classList.add(`text-bg-${type}`);
+
+    bootstrap.Toast.getOrCreateInstance(toast, {
+        delay: 3500
+    }).show();
+}
+
+function setAgentStatus(online, version = "") {
+    isAgentOnline = online;
+
+    const status = $("agent-status");
+    const banner = $("agent-launcher-banner");
+    const machineInfo = $("machine-info-card");
+
+    if (online) {
+        status.className = "badge bg-success";
+        status.innerHTML = '<span class="status-dot"></span>Online (Local)';
+        banner.style.display = "none";
+        machineInfo.style.display = "block";
+
+        if (version) {
+            $("agent-version").textContent = `Agent ${version}`;
+        }
+    } else {
+        status.className = "badge bg-danger";
+        status.innerHTML = '<span class="status-dot"></span>Offline';
+        banner.style.display = "block";
+        machineInfo.style.display = "none";
+    }
+}
+
+async function fetchAPI(endpoint, options = {}, timeout = REQUEST_TIMEOUT) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+
+    try {
+        const response = await fetch(`${LOCAL_AGENT_URL}${endpoint}`, {
+            ...options,
+            signal: controller.signal,
+            cache: "no-store"
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
         }
 
-        function copyLauncher() {
-            const cmd = document.getElementById('cmd-text').innerText;
-            navigator.clipboard.writeText(cmd);
-            alert("คัดลอกคำสั่งเรียบร้อย!\nนำไปวางในหน้าต่าง PowerShell (Run as Administrator) บนเครื่องหน้างานได้เลยครับ");
+        const text = await response.text();
+
+        if (!text) {
+            return {};
         }
 
-        async function loadMetrics() {
-            const data = await fetchAPI('/metrics');
-            if (data) {
-                document.getElementById('cpu-val').innerText = `${data.cpu}%`;
-                document.getElementById('ram-val').innerText = `${data.ram}%`;
-                document.getElementById('ram-free').innerText = `Free: ${data.ramFreeGB} GB`;
-                document.getElementById('disk-val').innerText = `${data.disk}%`;
-                document.getElementById('disk-free').innerText = `Free: ${data.diskFreeGB} GB`;
-            }
+        try {
+            return JSON.parse(text);
+        } catch {
+            throw new Error("Invalid JSON response from Local Agent");
         }
 
-        async function runDiagnose() {
-            const container = document.getElementById('diag-container');
-            container.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Analyzing system health...</p></div>';
-            
-            const data = await fetchAPI('/diagnose');
-            if (!data) return;
+    } catch (error) {
+        setAgentStatus(false);
 
-            if (!data.problems || data.problems.length === 0) {
-                container.innerHTML = `
-                    <div class="alert alert-success d-flex align-items-center m-0">
-                        <span class="fs-4 me-3">🟢</span>
-                        <div>
-                            <h6 class="fw-bold mb-1">System Healthy</h6>
-                            <small>No abnormal system operations or failures detected.</small>
-                        </div>
-                    </div>`;
-                return;
-            }
-
-            container.innerHTML = '';
-            data.problems.forEach(p => {
-                const sevClass = p.severity === 'critical' ? 'severity-critical' : 'severity-warning';
-                const evidenceList = (p.evidence || []).map(e => `<li>${e}</li>`).join('');
-                const evidenceText = (p.evidence || []).join(', ');
-
-                container.innerHTML += `
-                    <div class="card card-custom p-3 ${sevClass}">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div>
-                                <h6 class="fw-bold text-dark m-0">${p.title}</h6>
-                                <p class="text-muted small mt-1 mb-2">${p.description}</p>
-                            </div>
-                            <span class="badge ${p.severity === 'critical' ? 'bg-danger' : 'bg-warning text-dark'}">${p.severity.toUpperCase()}</span>
-                        </div>
-                        <div class="small text-muted mt-2">
-                            <strong>Evidence:</strong> <ul class="mb-1 ps-3">${evidenceList}</ul>
-                        </div>
-                        ${p.recommendedFix ? `
-                            <div class="mt-2 pt-2 border-top text-end">
-                                <button class="btn btn-sm btn-danger fw-bold" onclick="executeFix('${p.recommendedFix}', '${p.title}', '${p.id}', '${evidenceText}')">
-                                    🔧 Execute Fix: ${p.recommendedFix}
-                                </button>
-                            </div>` : ''}
-                    </div>`;
-            });
+        if (error.name === "AbortError") {
+            throw new Error("Local Agent request timeout");
         }
 
-        async function executeFix(action, title, problemId, evidence) {
-            if (!confirm(`Execute whitelist command '${action}' to fix '${title}'?`)) return;
+        throw error;
+    } finally {
+        clearTimeout(timer);
+    }
+}
 
-            // 1. Send Fix Command
-            const res = await fetchAPI('/fix', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: action, title: title, verificationStatus: "PENDING" })
-            });
+async function checkAgent() {
+    try {
+        const data = await fetchAPI("/health", {}, 2500);
 
-            if (!res || !res.success) {
-                alert(`Execution failed: ${res ? res.message : 'Unknown error'}`);
-                return;
-            }
+        setAgentStatus(
+            true,
+            data.version || ""
+        );
 
-            // 2. Re-Diagnose (Verification Flow)
-            const afterDiag = await fetchAPI('/diagnose');
-            const problemStillExists = afterDiag && afterDiag.problems ? 
-                afterDiag.problems.some(p => p.id === problemId) : false;
-
-            const isVerifiedSuccess = !problemStillExists;
-            const verdictText = isVerifiedSuccess ? "VERIFIED_SUCCESS" : "VERIFIED_FAILED";
-
-            // 3. Update Status
-            await fetchAPI('/fix', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: action, title: title, verificationStatus: verdictText })
-            });
-
-            // 4. Show Modal and Refresh Data
-            showVerificationModal({ id: problemId, title: title, evidence: evidence }, action, isVerifiedSuccess);
-            
-            // รีเฟรชข้อมูลทุกส่วนหลังแก้ปัญหา
-            loadMetrics();
-            loadHistory();
-            runDiagnose();
+        if (data.computer) {
+            $("machine-name").textContent = data.computer;
         }
 
-        function showVerificationModal(before, action, isSuccess) {
-            document.getElementById('v-before-desc').innerText = `${before.title} [${before.evidence}]`;
-            document.getElementById('v-action-desc').innerText = `Executed: ${action}`;
-
-            const badgeContainer = document.getElementById('verdict-badge');
-            const afterDesc = document.getElementById('v-after-desc');
-
-            if (isSuccess) {
-                badgeContainer.innerHTML = '<span class="badge bg-success fs-6 p-2">✅ VERIFICATION: SUCCESS</span>';
-                afterDesc.innerHTML = '<span class="text-success fw-bold">Problem resolved. Verified through re-diagnosis.</span>';
-            } else {
-                badgeContainer.innerHTML = '<span class="badge bg-danger fs-6 p-2">❌ VERIFICATION: FAILED</span>';
-                afterDesc.innerHTML = '<span class="text-danger fw-bold">Problem persists after remediation attempt.</span>';
-            }
-
-            const modal = new bootstrap.Modal(document.getElementById('verificationModal'));
-            modal.show();
+        if (data.os) {
+            $("machine-os").textContent = data.os;
         }
 
-        async function loadProcesses() {
-            const data = await fetchAPI('/processes');
-            if (!data) return;
+        if (data.serverTime) {
+            $("last-update").textContent = formatTimestamp(data.serverTime);
+        }
 
-            const renderList = (elementId, items) => {
-                const list = document.getElementById(elementId);
-                list.innerHTML = '';
-                items.forEach(p => {
-                    list.innerHTML += `
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <div>
-                                <strong>${p.Name}</strong> <small class="text-muted">(PID: ${p.Id})</small><br>
-                                <small class="text-muted">CPU: ${p.CPU_Time}s | RAM: ${p.RAM_MB} MB</small>
-                            </div>
-                            ${p.IsSystem ? '<span class="badge bg-secondary">System</span>' : 
-                            `<button class="btn btn-sm btn-outline-danger" onclick="killProcess(${p.Id}, '${p.Name}')">Kill</button>`}
-                        </li>`;
-                });
+        return true;
+
+    } catch {
+        setAgentStatus(false);
+        return false;
+    }
+}
+
+async function copyLauncher() {
+    const command = $("cmd-text").textContent.trim();
+
+    try {
+        await navigator.clipboard.writeText(command);
+        showToast(
+            "คัดลอกคำสั่งเรียบร้อยแล้ว",
+            "success",
+            "Copied"
+        );
+    } catch {
+        const textarea = document.createElement("textarea");
+        textarea.value = command;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+
+        try {
+            document.execCommand("copy");
+            showToast("คัดลอกคำสั่งเรียบร้อยแล้ว", "success", "Copied");
+        } catch {
+            showToast(
+                "ไม่สามารถคัดลอกอัตโนมัติได้ กรุณาเลือกคำสั่งแล้ว Copy",
+                "warning"
+            );
+        }
+
+        textarea.remove();
+    }
+}
+
+function updateMetricBar(id, value) {
+    const n = Math.max(0, Math.min(100, Number(value) || 0));
+    $(id).style.width = `${n}%`;
+
+    if (n >= 90) {
+        $(id).style.background = "#dc3545";
+    } else if (n >= 75) {
+        $(id).style.background = "#ffc107";
+    } else {
+        $(id).style.background = "#198754";
+    }
+}
+
+async function loadMetrics() {
+    if (!isAgentOnline) return;
+
+    try {
+        const data = await fetchAPI("/metrics");
+
+        $("cpu-val").textContent = formatPercent(data.cpu);
+        $("ram-val").textContent = formatPercent(data.ram);
+        $("disk-val").textContent = formatPercent(data.disk);
+
+        $("ram-free").textContent =
+            `Free: ${formatNumber(data.ramFreeGB, 2)} GB`;
+
+        $("disk-free").textContent =
+            `Free: ${formatNumber(data.diskFreeGB, 2)} GB`;
+
+        $("cpu-detail").textContent =
+            data.cpuCount
+                ? `${data.cpuCount} logical processor(s)`
+                : "Live system CPU";
+
+        updateMetricBar("cpu-bar", data.cpu);
+        updateMetricBar("ram-bar", data.ram);
+        updateMetricBar("disk-bar", data.disk);
+
+        if (data.computer) {
+            $("machine-name").textContent = data.computer;
+        }
+
+        if (data.os) {
+            $("machine-os").textContent = data.os;
+        }
+
+        $("last-update").textContent =
+            data.timestamp
+                ? formatTimestamp(data.timestamp)
+                : new Date().toLocaleString("th-TH");
+
+    } catch {
+        setAgentStatus(false);
+    }
+}
+
+function severityInfo(severity) {
+    switch (String(severity).toLowerCase()) {
+        case "critical":
+            return {
+                card: "severity-critical",
+                badge: "bg-danger",
+                icon: "🔴"
             };
 
-            renderList('cpu-process-list', data.cpu || []);
-            renderList('ram-process-list', data.ram || []);
+        case "warning":
+            return {
+                card: "severity-warning",
+                badge: "bg-warning text-dark",
+                icon: "🟡"
+            };
+
+        default:
+            return {
+                card: "severity-info",
+                badge: "bg-primary",
+                icon: "🔵"
+            };
+    }
+}
+
+function renderDiagnosticSummary(problems) {
+    const count = problems.length;
+
+    if (count === 0) {
+        $("diag-summary").innerHTML = `
+            <div class="alert alert-success d-flex align-items-center mb-0">
+                <span class="fs-4 me-3">🟢</span>
+                <div>
+                    <div class="fw-bold">System Healthy</div>
+                    <small>
+                        ไม่พบปัญหาที่ตรงกับกฎตรวจสอบของ Diagnostic Engine
+                    </small>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    const critical = problems.filter(
+        p => String(p.severity).toLowerCase() === "critical"
+    ).length;
+
+    const warning = problems.filter(
+        p => String(p.severity).toLowerCase() === "warning"
+    ).length;
+
+    $("diag-summary").innerHTML = `
+        <div class="alert alert-light border d-flex flex-wrap gap-3 align-items-center mb-0">
+            <strong>พบ ${count} รายการ</strong>
+            ${critical
+                ? `<span class="badge bg-danger">${critical} Critical</span>`
+                : ""}
+            ${warning
+                ? `<span class="badge bg-warning text-dark">${warning} Warning</span>`
+                : ""}
+        </div>
+    `;
+}
+
+async function runDiagnose() {
+    if (isBusy) return;
+
+    if (!isAgentOnline) {
+        await checkAgent();
+
+        if (!isAgentOnline) {
+            showToast(
+                "Local Agent ยังไม่ทำงาน",
+                "warning"
+            );
+            return;
+        }
+    }
+
+    isBusy = true;
+
+    const button = $("diagnose-btn");
+    const originalText = button.innerHTML;
+
+    button.disabled = true;
+    button.innerHTML =
+        '<span class="spinner-border spinner-border-sm me-2"></span>Analyzing...';
+
+    $("diag-container").innerHTML = `
+        <div class="empty-state">
+            <div class="spinner-border text-primary"></div>
+            <div class="mt-3">กำลังตรวจสอบระบบ...</div>
+        </div>
+    `;
+
+    try {
+        const data = await fetchAPI("/diagnose", {}, 15000);
+        const problems = Array.isArray(data.problems)
+            ? data.problems
+            : [];
+
+        renderDiagnosticSummary(problems);
+
+        $("diagnostic-time").textContent =
+            `Checked: ${new Date().toLocaleString("th-TH")}`;
+
+        if (problems.length === 0) {
+            $("diag-container").innerHTML = `
+                <div class="empty-state">
+                    <div class="display-5 mb-2">✅</div>
+                    <div class="fw-bold">No abnormal conditions detected</div>
+                    <div class="small mt-1">
+                        ระบบตรวจสอบตามกฎที่กำหนดไว้ทั้งหมดแล้ว
+                    </div>
+                </div>
+            `;
+            return;
         }
 
-        async function killProcess(id, name) {
-            if (!confirm(`Kill process ${name} (PID: ${id})?`)) return;
-            const res = await fetchAPI('/kill', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id, name: name })
-            });
-            
-            if (res && res.success) { 
-                // รีเฟรชข้อมูลแบบ Real-time หลังจาก Kill Process ทันที
-                loadProcesses(); 
-                loadMetrics(); 
-                loadHistory(); 
-                runDiagnose(); 
-            } else {
-                alert(`Failed to kill process: ${res ? res.message : 'Unknown error'}`);
+        $("diag-container").innerHTML = problems.map((p, index) => {
+            const sev = severityInfo(p.severity);
+
+            const evidence = Array.isArray(p.evidence)
+                ? p.evidence
+                : [];
+
+            const causes = Array.isArray(p.possibleCauses)
+                ? p.possibleCauses
+                : [];
+
+            return `
+                <div class="card problem-card card-custom p-3 ${sev.card}">
+                    <div class="d-flex justify-content-between align-items-start gap-3">
+
+                        <div class="flex-grow-1">
+                            <h6 class="fw-bold text-dark mb-1">
+                                ${sev.icon}
+                                ${escapeHtml(p.title)}
+                            </h6>
+
+                            <p class="text-muted small mb-2">
+                                ${escapeHtml(p.description)}
+                            </p>
+                        </div>
+
+                        <span class="badge ${sev.badge}">
+                            ${escapeHtml(String(p.severity || "INFO").toUpperCase())}
+                        </span>
+                    </div>
+
+                    ${
+                        evidence.length
+                            ? `
+                            <div class="small mt-2">
+                                <strong>Evidence</strong>
+                                <ul class="mb-2 ps-4">
+                                    ${evidence.map(e =>
+                                        `<li>${escapeHtml(e)}</li>`
+                                    ).join("")}
+                                </ul>
+                            </div>
+                            `
+                            : ""
+                    }
+
+                    ${
+                        causes.length
+                            ? `
+                            <div class="small text-muted">
+                                <strong>Possible causes</strong>
+                                <ul class="mb-1 ps-4">
+                                    ${causes.map(c =>
+                                        `<li>${escapeHtml(c)}</li>`
+                                    ).join("")}
+                                </ul>
+                            </div>
+                            `
+                            : ""
+                    }
+
+                    ${
+                        p.recommendedFix
+                            ? `
+                            <div class="mt-3 pt-3 border-top d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                                <small class="text-muted">
+                                    Recommended:
+                                    <code>${escapeHtml(p.recommendedFix)}</code>
+                                </small>
+
+                                <button
+                                    class="btn btn-sm btn-danger fix-btn"
+                                    data-action="${escapeHtml(p.recommendedFix)}"
+                                    data-problem-id="${escapeHtml(p.id || "")}"
+                                    data-title="${escapeHtml(p.title || "")}"
+                                    data-evidence="${escapeHtml(evidence.join(" | "))}">
+                                    🔧 Execute Fix
+                                </button>
+                            </div>
+                            `
+                            : `
+                            <div class="mt-3 pt-3 border-top">
+                                <small class="text-muted">
+                                    ℹ️ รายการนี้ยังไม่มี remediation อัตโนมัติ
+                                </small>
+                            </div>
+                            `
+                    }
+                </div>
+            `;
+        }).join("");
+
+    } catch (error) {
+        $("diag-container").innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Diagnostic failed</strong>
+                <div class="small mt-1">
+                    ${escapeHtml(error.message)}
+                </div>
+            </div>
+        `;
+    } finally {
+        isBusy = false;
+        button.disabled = false;
+        button.innerHTML = originalText;
+    }
+}
+
+async function executeFix(action, title, problemId, evidence) {
+    if (!action) return;
+
+    const confirmed = confirm(
+        `ยืนยันการแก้ไข?\n\n` +
+        `Problem: ${title}\n` +
+        `Action: ${action}\n\n` +
+        `ระบบจะ Execute เฉพาะคำสั่งที่ Local Agent อนุญาตไว้เท่านั้น`
+    );
+
+    if (!confirmed) return;
+
+    try {
+        const beforeDescription =
+            `${title}${evidence ? ` — ${evidence}` : ""}`;
+
+        showToast(
+            `กำลังดำเนินการ: ${action}`,
+            "info",
+            "Remediation"
+        );
+
+        const result = await fetchAPI("/fix", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                action,
+                title,
+                verificationStatus: "EXECUTING"
+            })
+        }, 30000);
+
+        if (!result || !result.success) {
+            showVerificationModal(
+                beforeDescription,
+                action,
+                false,
+                result?.message || "Execution failed"
+            );
+
+            await loadHistory();
+            return;
+        }
+
+        showToast(
+            result.message || "Action executed",
+            "success",
+            "Remediation"
+        );
+
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        const afterDiag = await fetchAPI("/diagnose", {}, 15000);
+
+        const problems = Array.isArray(afterDiag?.problems)
+            ? afterDiag.problems
+            : [];
+
+        const stillExists = problems.some(
+            p => String(p.id) === String(problemId)
+        );
+
+        const verified = !stillExists;
+
+        await fetchAPI("/fix", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                action,
+                title,
+                verificationStatus:
+                    verified
+                        ? "VERIFIED_SUCCESS"
+                        : "VERIFIED_FAILED"
+            })
+        });
+
+        showVerificationModal(
+            beforeDescription,
+            action,
+            verified,
+            verified
+                ? "Problem resolved by re-diagnosis."
+                : "Problem still exists after remediation."
+        );
+
+        await Promise.all([
+            loadMetrics(),
+            loadHistory(),
+            runDiagnose()
+        ]);
+
+    } catch (error) {
+        showVerificationModal(
+            `${title}${evidence ? ` — ${evidence}` : ""}`,
+            action,
+            false,
+            error.message
+        );
+    }
+}
+
+function showVerificationModal(
+    before,
+    action,
+    success,
+    afterText
+) {
+    $("v-before-desc").textContent = before;
+    $("v-action-desc").textContent = `Executed: ${action}`;
+    $("v-after-desc").textContent = afterText;
+
+    $("verdict-badge").innerHTML = success
+        ? '<span class="badge bg-success fs-6 p-2">✅ VERIFICATION: SUCCESS</span>'
+        : '<span class="badge bg-danger fs-6 p-2">❌ VERIFICATION: FAILED</span>';
+
+    bootstrap.Modal.getOrCreateInstance(
+        $("verificationModal")
+    ).show();
+}
+
+function processRow(process) {
+    const isSystem = Boolean(process.IsSystem);
+
+    return `
+        <div class="list-group-item d-flex justify-content-between align-items-center gap-2">
+            <div class="min-width-0">
+                <div class="d-flex align-items-center gap-2">
+                    <strong class="process-name"
+                            title="${escapeHtml(process.Name)}">
+                        ${escapeHtml(process.Name)}
+                    </strong>
+
+                    <small class="text-muted">
+                        PID ${escapeHtml(process.Id)}
+                    </small>
+                </div>
+
+                <small class="text-muted">
+                    CPU Time:
+                    ${formatNumber(process.CPU_Time, 1)}s
+                    · RAM:
+                    ${formatNumber(process.RAM_MB, 1)} MB
+                </small>
+            </div>
+
+            ${
+                isSystem
+                    ? `<span class="badge bg-secondary">Protected</span>`
+                    : `
+                        <button
+                            class="btn btn-sm btn-outline-danger kill-btn"
+                            data-pid="${escapeHtml(process.Id)}"
+                            data-name="${escapeHtml(process.Name)}">
+                            Kill
+                        </button>
+                      `
             }
+        </div>
+    `;
+}
+
+async function loadProcesses() {
+    if (!isAgentOnline) {
+        await checkAgent();
+    }
+
+    if (!isAgentOnline) {
+        $("cpu-process-list").innerHTML = `
+            <div class="empty-state">
+                Agent Offline
+            </div>
+        `;
+
+        $("ram-process-list").innerHTML = `
+            <div class="empty-state">
+                Agent Offline
+            </div>
+        `;
+
+        return;
+    }
+
+    try {
+        const data = await fetchAPI("/processes", {}, 10000);
+
+        const cpu = Array.isArray(data.cpu) ? data.cpu : [];
+        const ram = Array.isArray(data.ram) ? data.ram : [];
+
+        $("cpu-process-list").innerHTML =
+            cpu.length
+                ? cpu.map(processRow).join("")
+                : `<div class="empty-state">No process data</div>`;
+
+        $("ram-process-list").innerHTML =
+            ram.length
+                ? ram.map(processRow).join("")
+                : `<div class="empty-state">No process data</div>`;
+
+    } catch (error) {
+        showToast(error.message, "danger", "Process Manager");
+    }
+}
+
+async function killProcess(id, name) {
+    if (!id) return;
+
+    const confirmed = confirm(
+        `Kill process?\n\n${name} (PID: ${id})\n\n` +
+        `การปิด Process อาจทำให้โปรแกรมหรือข้อมูลที่ยังไม่ได้บันทึกสูญหาย`
+    );
+
+    if (!confirmed) return;
+
+    try {
+        const result = await fetchAPI("/kill", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                id: Number(id),
+                name
+            })
+        }, 15000);
+
+        if (result?.success) {
+            showToast(
+                result.message || `Terminated ${name}`,
+                "success",
+                "Process Manager"
+            );
+
+            await Promise.all([
+                loadProcesses(),
+                loadMetrics(),
+                loadHistory(),
+                runDiagnose()
+            ]);
+        } else {
+            showToast(
+                result?.message || "Failed to terminate process",
+                "danger",
+                "Process Manager"
+            );
         }
 
-        async function loadHistory() {
-            const data = await fetchAPI('/history');
-            const tbody = document.getElementById('history-table-body');
-            tbody.innerHTML = '';
+    } catch (error) {
+        showToast(error.message, "danger", "Process Manager");
+    }
+}
 
-            if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No history found.</td></tr>';
-                return;
-            }
+function historyBadge(result) {
+    const value = String(result || "").toUpperCase();
 
-            // แสดงประวัติล่าสุดขึ้นก่อน
-            data.slice().reverse().forEach(h => {
-                let badge = 'bg-secondary';
-                if (h.result === 'VERIFIED_SUCCESS' || h.result === 'SUCCESS') badge = 'bg-success';
-                if (h.result === 'VERIFIED_FAILED' || h.result === 'FAILED') badge = 'bg-danger';
+    if (value.includes("SUCCESS")) {
+        return "bg-success";
+    }
 
-                tbody.innerHTML += `
-                    <tr>
-                        <td><small>${h.timestamp}</small></td>
-                        <td>${h.computer}</td>
-                        <td>${h.problem}</td>
-                        <td><code>${h.action}</code></td>
-                        <td><span class="badge ${badge}">${h.result}</span></td>
-                    </tr>`;
-            });
+    if (value.includes("FAILED")) {
+        return "bg-danger";
+    }
+
+    if (value.includes("EXECUT")) {
+        return "bg-primary";
+    }
+
+    return "bg-secondary";
+}
+
+async function loadHistory() {
+    if (!isAgentOnline) {
+        await checkAgent();
+    }
+
+    if (!isAgentOnline) return;
+
+    try {
+        const data = await fetchAPI("/history", {}, 10000);
+
+        const history = Array.isArray(data)
+            ? data
+            : [];
+
+        const tbody = $("history-table-body");
+
+        if (!history.length) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="empty-state">
+                        No history found.
+                    </td>
+                </tr>
+            `;
+            return;
         }
 
-        async function stopAgent() {
-            if (!confirm("Stop Agent on this machine?")) return;
-            await fetchAPI('/stop');
-            alert("Local Agent stopped successfully.");
-            location.reload();
-        }
+        tbody.innerHTML = history
+            .slice()
+            .reverse()
+            .map(item => `
+                <tr>
+                    <td>
+                        <small>
+                            ${escapeHtml(formatTimestamp(item.timestamp))}
+                        </small>
+                    </td>
 
-        function refreshAll() {
+                    <td>
+                        <small>
+                            ${escapeHtml(item.computer)}
+                        </small>
+                    </td>
+
+                    <td>
+                        <small>
+                            ${escapeHtml(item.problem)}
+                        </small>
+                    </td>
+
+                    <td>
+                        <code class="small">
+                            ${escapeHtml(item.action)}
+                        </code>
+                    </td>
+
+                    <td>
+                        <span class="badge ${historyBadge(item.result)}">
+                            ${escapeHtml(item.result)}
+                        </span>
+                    </td>
+                </tr>
+            `)
+            .join("");
+
+    } catch (error) {
+        showToast(error.message, "danger", "History");
+    }
+}
+
+async function stopAgent() {
+    if (!isAgentOnline) {
+        showToast("Local Agent is already offline", "info");
+        return;
+    }
+
+    const confirmed = confirm(
+        "Stop Local Diagnostic Agent?\n\n" +
+        "หลังจากหยุด Agent หน้าเว็บจะไม่สามารถตรวจสอบหรือแก้ไขเครื่องได้"
+    );
+
+    if (!confirmed) return;
+
+    try {
+        const result = await fetchAPI(
+            "/stop",
+            {},
+            5000
+        );
+
+        showToast(
+            result?.message || "Agent stopped",
+            "success",
+            "Local Agent"
+        );
+
+        setAgentStatus(false);
+
+    } catch {
+        setAgentStatus(false);
+
+        showToast(
+            "Local Agent stopped or connection closed.",
+            "info",
+            "Local Agent"
+        );
+    }
+}
+
+async function refreshAll() {
+    if (isBusy) return;
+
+    await checkAgent();
+
+    if (!isAgentOnline) return;
+
+    await Promise.all([
+        loadMetrics(),
+        runDiagnose(),
+        loadProcesses(),
+        loadHistory()
+    ]);
+}
+
+$("refresh-btn").addEventListener("click", refreshAll);
+$("diagnose-btn").addEventListener("click", runDiagnose);
+$("copy-command-btn").addEventListener("click", copyLauncher);
+$("stop-agent-btn").addEventListener("click", stopAgent);
+$("refresh-process-btn").addEventListener("click", loadProcesses);
+$("refresh-history-btn").addEventListener("click", loadHistory);
+
+$("process-tab").addEventListener("shown.bs.tab", loadProcesses);
+$("history-tab").addEventListener("shown.bs.tab", loadHistory);
+
+$("diag-container").addEventListener("click", event => {
+    const button = event.target.closest(".fix-btn");
+
+    if (!button) return;
+
+    executeFix(
+        button.dataset.action,
+        button.dataset.title,
+        button.dataset.problemId,
+        button.dataset.evidence
+    );
+});
+
+$("cpu-process-list").addEventListener("click", event => {
+    const button = event.target.closest(".kill-btn");
+
+    if (!button) return;
+
+    killProcess(
+        button.dataset.pid,
+        button.dataset.name
+    );
+});
+
+$("ram-process-list").addEventListener("click", event => {
+    const button = event.target.closest(".kill-btn");
+
+    if (!button) return;
+
+    killProcess(
+        button.dataset.pid,
+        button.dataset.name
+    );
+});
+
+async function startApp() {
+    await checkAgent();
+
+    if (isAgentOnline) {
+        await Promise.all([
+            loadMetrics(),
+            runDiagnose(),
+            loadProcesses(),
+            loadHistory()
+        ]);
+    }
+
+    if (metricsTimer) {
+        clearInterval(metricsTimer);
+    }
+
+    metricsTimer = setInterval(() => {
+        if (isAgentOnline) {
             loadMetrics();
-            runDiagnose();
-            loadProcesses();
-            loadHistory();
         }
+    }, METRICS_INTERVAL);
 
-        // Auto-refresh metrics every 5 seconds
-        refreshAll();
-        setInterval(loadMetrics, 5000);
-    </script>
+    if (agentTimer) {
+        clearInterval(agentTimer);
+    }
+
+    agentTimer = setInterval(async () => {
+        if (!isAgentOnline) {
+            await checkAgent();
+
+            if (isAgentOnline) {
+                await loadMetrics();
+            }
+        }
+    }, AGENT_CHECK_INTERVAL);
+}
+
+startApp();
+</script>
+
 </body>
 </html>
