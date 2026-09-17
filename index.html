@@ -1,1517 +1,1946 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cloud IT Diagnostic Portal V3</title>
 
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<head>
+
+<meta charset="utf-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+>
+
+<title>IT Field Diagnostic Portal V4</title>
+
+<link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+>
 
 <style>
-    body {
-        background: #f4f6f9;
-        color: #212529;
-    }
 
-    .navbar-brand {
-        font-weight: 700;
-    }
+body {
+    background:#f4f6f9;
+}
 
-    .card {
-        border: 0;
-        border-radius: 14px;
-        box-shadow: 0 3px 15px rgba(0,0,0,.06);
-    }
+.navbar-brand {
+    font-weight:700;
+}
 
-    .metric-card {
-        min-height: 145px;
-    }
+.card {
+    border:0;
+    box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
 
-    .metric-value {
-        font-size: 2rem;
-        font-weight: 700;
-    }
+.metric {
+    font-size:28px;
+    font-weight:700;
+}
 
-    .metric-label {
-        color: #6c757d;
-        font-size: .9rem;
-    }
+.status-dot {
+    width:10px;
+    height:10px;
+    display:inline-block;
+    border-radius:50%;
+    margin-right:7px;
+}
 
-    .status-dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 6px;
-    }
+.online {
+    background:#198754;
+}
 
-    .online {
-        background: #198754;
-    }
+.offline {
+    background:#dc3545;
+}
 
-    .offline {
-        background: #dc3545;
-    }
+.warning {
+    background:#ffc107;
+}
 
-    .warning {
-        background: #ffc107;
-    }
+.hidden {
+    display:none !important;
+}
 
-    .health-score {
-        font-size: 3rem;
-        font-weight: 800;
-    }
+.small-muted {
+    color:#6c757d;
+    font-size:13px;
+}
 
-    .health-ring {
-        width: 120px;
-        height: 120px;
-        border-radius: 50%;
-        border: 10px solid #dee2e6;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: auto;
-    }
+.job-header {
+    border-left:5px solid #0d6efd;
+}
 
-    .check-row {
-        padding: 12px;
-        border-bottom: 1px solid #eee;
-    }
+.job-id {
+    font-family:monospace;
+    font-weight:700;
+}
 
-    .check-row:last-child {
-        border-bottom: 0;
-    }
+.table td,
+.table th {
+    vertical-align:middle;
+}
 
-    .problem-card {
-        border-left: 5px solid #dc3545;
-    }
-
-    .ok-card {
-        border-left: 5px solid #198754;
-    }
-
-    .info-card {
-        border-left: 5px solid #0d6efd;
-    }
-
-    .process-table td,
-    .process-table th {
-        vertical-align: middle;
-        font-size: .9rem;
-    }
-
-    .small-muted {
-        font-size: .8rem;
-        color: #6c757d;
-    }
-
-    .mono {
-        font-family: Consolas, monospace;
-    }
-
-    .tab-pane {
-        padding-top: 20px;
-    }
-
-    .loading {
-        opacity: .55;
-        pointer-events: none;
-    }
-
-    .badge-soft {
-        background: #eef2f7;
-        color: #495057;
-    }
-
-    .event-message {
-        white-space: pre-wrap;
-        max-height: 120px;
-        overflow: auto;
-        font-size: .85rem;
-    }
-
-    #toastContainer {
-        position: fixed;
-        right: 20px;
-        bottom: 20px;
-        z-index: 9999;
-    }
 </style>
+
 </head>
 
 <body>
 
 <nav class="navbar navbar-dark bg-dark">
-    <div class="container-fluid">
-        <span class="navbar-brand">
-            🛠 Cloud IT Diagnostic Portal <span class="badge bg-primary">V3</span>
-        </span>
 
-        <div class="d-flex align-items-center gap-3 text-white">
-            <span id="agentStatus">
-                <span class="status-dot offline"></span>Agent Offline
-            </span>
+<div class="container-fluid">
 
-            <button class="btn btn-outline-light btn-sm" onclick="refreshAll()">
-                ↻ Refresh
-            </button>
+<span class="navbar-brand">
+    IT Field Diagnostic Portal V4
+</span>
 
-            <button class="btn btn-danger btn-sm" onclick="stopAgent()">
-                Stop Agent
-            </button>
-        </div>
-    </div>
+<div class="text-white">
+
+<span
+    id="agentDot"
+    class="status-dot offline"
+></span>
+
+<span id="agentStatus">
+    Agent Offline
+</span>
+
+</div>
+
+</div>
+
 </nav>
+
 
 <div class="container-fluid py-4">
 
-    <!-- Launcher -->
-    <div id="launcherCard" class="card mb-4">
-        <div class="card-body">
-            <h5>Local Agent</h5>
-            <p class="text-muted mb-2">
-                Start the Windows diagnostic agent if it is not running.
-            </p>
 
-            <div class="input-group">
-                <input
-                    id="launcherCommand"
-                    class="form-control mono"
-                    readonly
-                    value="iwr -useb https://itchula001.github.io/diagnostic/Start-Agent.ps1 | iex"
-                >
-                <button class="btn btn-primary" onclick="copyLauncher()">
-                    Copy Command
-                </button>
-            </div>
-        </div>
-    </div>
+<!-- ====================================================== -->
+<!-- START JOB -->
+<!-- ====================================================== -->
 
-    <!-- SYSTEM HEADER -->
-    <div id="systemCard" class="card mb-4 d-none">
-        <div class="card-body">
-            <div class="row align-items-center">
+<div
+    id="startScreen"
+    class="card mb-4"
+>
 
-                <div class="col-lg-7">
-                    <h3 id="computerName">-</h3>
-                    <div id="windowsInfo" class="text-muted">-</div>
-                    <div class="mt-2">
-                        <span class="badge badge-soft me-1">
-                            IP: <span id="primaryIp">-</span>
-                        </span>
-                        <span class="badge badge-soft me-1">
-                            Uptime: <span id="uptime">-</span>
-                        </span>
-                        <span class="badge badge-soft">
-                            Agent: <span id="agentAdmin">-</span>
-                        </span>
-                    </div>
-                </div>
+<div class="card-body text-center py-5">
 
-                <div class="col-lg-5 text-center">
-                    <div class="health-ring">
-                        <div>
-                            <div id="healthScore" class="health-score">--</div>
-                            <div class="small-muted">Health</div>
-                        </div>
-                    </div>
-                </div>
+<h2>
+    IT Field Diagnostic
+</h2>
 
-            </div>
-        </div>
-    </div>
+<p class="text-muted">
+Portable Job Mode
+</p>
 
-    <!-- METRICS -->
-    <div class="row g-3 mb-4">
+<div
+    class="alert alert-info mx-auto"
+    style="max-width:700px"
+>
 
-        <div class="col-md-3">
-            <div class="card metric-card">
-                <div class="card-body">
-                    <div class="metric-label">CPU</div>
-                    <div id="cpuValue" class="metric-value">--%</div>
-                    <div id="cpuDetail" class="small-muted">Waiting...</div>
-                </div>
-            </div>
-        </div>
+<strong>No permanent Agent.</strong>
 
-        <div class="col-md-3">
-            <div class="card metric-card">
-                <div class="card-body">
-                    <div class="metric-label">Memory</div>
-                    <div id="ramValue" class="metric-value">--%</div>
-                    <div id="ramDetail" class="small-muted">Waiting...</div>
-                </div>
-            </div>
-        </div>
+<br>
 
-        <div class="col-md-3">
-            <div class="card metric-card">
-                <div class="card-body">
-                    <div class="metric-label">Disk C:</div>
-                    <div id="diskValue" class="metric-value">--%</div>
-                    <div id="diskDetail" class="small-muted">Waiting...</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card metric-card">
-                <div class="card-body">
-                    <div class="metric-label">Network</div>
-                    <div id="networkValue" class="metric-value">--</div>
-                    <div id="networkDetail" class="small-muted">Waiting...</div>
-                </div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- NETWORK + SERVICES -->
-    <div class="row g-3 mb-4">
-
-        <div class="col-lg-6">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5>🌐 Network Path</h5>
-
-                    <div class="check-row d-flex justify-content-between">
-                        <span>Adapter</span>
-                        <span id="netAdapter">--</span>
-                    </div>
-
-                    <div class="check-row d-flex justify-content-between">
-                        <span>Gateway</span>
-                        <span id="netGateway">--</span>
-                    </div>
-
-                    <div class="check-row d-flex justify-content-between">
-                        <span>Gateway Ping</span>
-                        <span id="netGatewayPing">--</span>
-                    </div>
-
-                    <div class="check-row d-flex justify-content-between">
-                        <span>DNS</span>
-                        <span id="netDns">--</span>
-                    </div>
-
-                    <div class="check-row d-flex justify-content-between">
-                        <span>Internet</span>
-                        <span id="netInternet">--</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-6">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5>⚙ Important Services</h5>
-                    <div id="servicesSummary">
-                        Loading...
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- TABS -->
-    <div class="card">
-        <div class="card-body">
-
-            <ul class="nav nav-tabs" role="tablist">
-
-                <li class="nav-item">
-                    <button class="nav-link active"
-                            data-bs-toggle="tab"
-                            data-bs-target="#diagnosticTab">
-                        🔍 Diagnostic
-                    </button>
-                </li>
-
-                <li class="nav-item">
-                    <button class="nav-link"
-                            data-bs-toggle="tab"
-                            data-bs-target="#processTab">
-                        🧠 Processes
-                    </button>
-                </li>
-
-                <li class="nav-item">
-                    <button class="nav-link"
-                            data-bs-toggle="tab"
-                            data-bs-target="#eventTab">
-                        📋 Events
-                    </button>
-                </li>
-
-                <li class="nav-item">
-                    <button class="nav-link"
-                            data-bs-toggle="tab"
-                            data-bs-target="#historyTab">
-                        🕘 History
-                    </button>
-                </li>
-
-            </ul>
-
-            <div class="tab-content">
-
-                <!-- DIAGNOSTIC -->
-                <div class="tab-pane fade show active" id="diagnosticTab">
-
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <h5 class="mb-0">System Diagnostic</h5>
-                            <small class="text-muted">
-                                Checks CPU, RAM, Disk, Network, Services, Defender and Windows Update
-                            </small>
-                        </div>
-
-                        <button class="btn btn-primary"
-                                onclick="runDiagnostic()">
-                            Run Full Diagnostic
-                        </button>
-                    </div>
-
-                    <div id="diagnosticSummary" class="mb-3"></div>
-                    <div id="diagnosticResults"></div>
-
-                </div>
-
-                <!-- PROCESS -->
-                <div class="tab-pane fade" id="processTab">
-
-                    <div class="row mb-3">
-
-                        <div class="col-md-5">
-                            <input id="processSearch"
-                                   class="form-control"
-                                   placeholder="Search process / PID / path..."
-                                   oninput="filterProcesses()">
-                        </div>
-
-                        <div class="col-md-3">
-                            <select id="processSort"
-                                    class="form-select"
-                                    onchange="renderProcesses()">
-                                <option value="cpu">Sort: CPU</option>
-                                <option value="ram">Sort: RAM</option>
-                                <option value="name">Sort: Name</option>
-                                <option value="pid">Sort: PID</option>
-                            </select>
-                        </div>
-
-                        <div class="col-md-4 text-end">
-                            <button class="btn btn-outline-primary"
-                                    onclick="loadProcesses()">
-                                Refresh Processes
-                            </button>
-                        </div>
-
-                    </div>
-
-                    <div class="table-responsive">
-                        <table class="table table-hover process-table">
-                            <thead>
-                            <tr>
-                                <th>Process</th>
-                                <th>PID</th>
-                                <th>CPU</th>
-                                <th>RAM</th>
-                                <th>User</th>
-                                <th>Protected</th>
-                                <th>Action</th>
-                            </tr>
-                            </thead>
-                            <tbody id="processTable">
-                            <tr>
-                                <td colspan="7" class="text-center">
-                                    No data
-                                </td>
-                            </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                </div>
-
-                <!-- EVENTS -->
-                <div class="tab-pane fade" id="eventTab">
-
-                    <div class="d-flex justify-content-between mb-3">
-                        <div>
-                            <h5>Windows Event Errors</h5>
-                            <small class="text-muted">
-                                Recent Critical / Error events
-                            </small>
-                        </div>
-
-                        <button class="btn btn-outline-primary"
-                                onclick="loadEvents()">
-                            Refresh Events
-                        </button>
-                    </div>
-
-                    <div id="eventResults"></div>
-
-                </div>
-
-                <!-- HISTORY -->
-                <div class="tab-pane fade" id="historyTab">
-
-                    <div class="d-flex justify-content-between mb-3">
-
-                        <div>
-                            <h5>Diagnostic History</h5>
-                            <small class="text-muted">
-                                Actions, evidence and verification
-                            </small>
-                        </div>
-
-                        <button class="btn btn-success"
-                                onclick="exportHistory()">
-                            Export CSV
-                        </button>
-
-                    </div>
-
-                    <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th>Time</th>
-                                <th>Machine</th>
-                                <th>Problem</th>
-                                <th>Action</th>
-                                <th>Before</th>
-                                <th>After</th>
-                                <th>Result</th>
-                            </tr>
-                            </thead>
-
-                            <tbody id="historyTable">
-                            </tbody>
-                        </table>
-                    </div>
-
-                </div>
-
-            </div>
-        </div>
-    </div>
+The diagnostic Agent runs only while this job is active.
+When the job ends, the Agent exits.
 
 </div>
 
-<!-- FIX MODAL -->
-<div class="modal fade" id="fixModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
+<div class="mb-3">
 
-            <div class="modal-header">
-                <h5 class="modal-title">Fix Center</h5>
-                <button class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
+<input
+    id="technicianInput"
+    class="form-control mx-auto"
+    style="max-width:400px"
+    placeholder="Technician name"
+/>
 
-            <div class="modal-body">
-
-                <div class="alert alert-warning">
-                    The agent will execute a predefined Windows repair action.
-                </div>
-
-                <div>
-                    <strong>Problem</strong>
-                    <div id="fixProblem" class="mb-3"></div>
-                </div>
-
-                <div>
-                    <strong>Evidence</strong>
-                    <div id="fixEvidence" class="mb-3"></div>
-                </div>
-
-                <div>
-                    <strong>Action</strong>
-                    <div id="fixAction" class="mb-3"></div>
-                </div>
-
-                <div id="fixProgress" class="d-none">
-                    <div class="spinner-border spinner-border-sm"></div>
-                    Running repair and verification...
-                </div>
-
-                <div id="fixResult" class="mt-3"></div>
-
-            </div>
-
-            <div class="modal-footer">
-                <button class="btn btn-secondary"
-                        data-bs-dismiss="modal">
-                    Cancel
-                </button>
-
-                <button id="confirmFixBtn"
-                        class="btn btn-danger"
-                        onclick="executeFix()">
-                    Execute Fix
-                </button>
-            </div>
-
-        </div>
-    </div>
 </div>
 
-<div id="toastContainer"></div>
+<div class="mb-3">
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<input
+    id="jobIdInput"
+    class="form-control mx-auto"
+    style="max-width:400px"
+    placeholder="Job ID (optional)"
+/>
+
+</div>
+
+<button
+    class="btn btn-primary btn-lg"
+    onclick="startJob()"
+>
+Start New Job
+</button>
+
+<div class="mt-4 small-muted">
+
+If Agent is offline:
+
+<br>
+
+Run <strong>Start-Diagnostic.cmd</strong> once.
+
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ====================================================== -->
+<!-- JOB HEADER -->
+<!-- ====================================================== -->
+
+<div
+    id="jobScreen"
+    class="hidden"
+>
+
+<div class="card job-header mb-4">
+
+<div class="card-body">
+
+<div class="d-flex justify-content-between">
+
+<div>
+
+<div class="small-muted">
+ACTIVE JOB
+</div>
+
+<div
+    id="jobId"
+    class="job-id"
+>
+-
+</div>
+
+<div
+    id="jobComputer"
+    class="text-muted"
+>
+-
+</div>
+
+</div>
+
+<div class="text-end">
+
+<div>
+
+<span
+    id="jobStatus"
+    class="badge text-bg-success"
+>
+ACTIVE
+</span>
+
+</div>
+
+<button
+    class="btn btn-danger mt-2"
+    onclick="endJob()"
+>
+End Job
+</button>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ====================================================== -->
+<!-- SYSTEM -->
+<!-- ====================================================== -->
+
+<div class="card mb-4">
+
+<div class="card-body">
+
+<div class="row">
+
+<div class="col-md-3">
+
+<div class="small-muted">
+Computer
+</div>
+
+<strong id="pcName">
+-
+</strong>
+
+</div>
+
+<div class="col-md-3">
+
+<div class="small-muted">
+Windows
+</div>
+
+<strong id="windowsInfo">
+-
+</strong>
+
+</div>
+
+<div class="col-md-3">
+
+<div class="small-muted">
+IP
+</div>
+
+<strong id="ipInfo">
+-
+</strong>
+
+</div>
+
+<div class="col-md-3">
+
+<div class="small-muted">
+Agent
+</div>
+
+<strong id="agentVersion">
+-
+</strong>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ====================================================== -->
+<!-- METRICS -->
+<!-- ====================================================== -->
+
+<div class="row g-3 mb-4">
+
+<div class="col-md-3">
+
+<div class="card">
+
+<div class="card-body">
+
+<div class="small-muted">
+CPU
+</div>
+
+<div
+    id="cpuMetric"
+    class="metric"
+>
+-
+</div>
+
+</div>
+</div>
+
+</div>
+
+
+<div class="col-md-3">
+
+<div class="card">
+
+<div class="card-body">
+
+<div class="small-muted">
+RAM
+</div>
+
+<div
+    id="ramMetric"
+    class="metric"
+>
+-
+</div>
+
+</div>
+</div>
+
+</div>
+
+
+<div class="col-md-3">
+
+<div class="card">
+
+<div class="card-body">
+
+<div class="small-muted">
+Disk C:
+</div>
+
+<div
+    id="diskMetric"
+    class="metric"
+>
+-
+</div>
+
+</div>
+</div>
+
+</div>
+
+
+<div class="col-md-3">
+
+<div class="card">
+
+<div class="card-body">
+
+<div class="small-muted">
+Health
+</div>
+
+<div
+    id="healthMetric"
+    class="metric"
+>
+-
+</div>
+
+</div>
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ====================================================== -->
+<!-- NETWORK -->
+<!-- ====================================================== -->
+
+<div class="card mb-4">
+
+<div class="card-body">
+
+<h5>
+Network
+</h5>
+
+<div class="row">
+
+<div class="col-md-3">
+Adapter:
+<strong id="netAdapter">-</strong>
+</div>
+
+<div class="col-md-3">
+Gateway:
+<strong id="gateway">-</strong>
+</div>
+
+<div class="col-md-2">
+Gateway:
+<strong id="gatewayPing">-</strong>
+</div>
+
+<div class="col-md-2">
+DNS:
+<strong id="dnsStatus">-</strong>
+</div>
+
+<div class="col-md-2">
+Internet:
+<strong id="internetStatus">-</strong>
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ====================================================== -->
+<!-- ACTION BAR -->
+<!-- ====================================================== -->
+
+<div class="card mb-4">
+
+<div class="card-body d-flex gap-2 flex-wrap">
+
+<button
+    class="btn btn-primary"
+    onclick="runDiagnostics()"
+>
+Run Full Diagnostic
+</button>
+
+<button
+    class="btn btn-outline-primary"
+    onclick="loadProcesses()"
+>
+Processes
+</button>
+
+<button
+    class="btn btn-outline-primary"
+    onclick="loadEvents()"
+>
+Events
+</button>
+
+<button
+    class="btn btn-outline-secondary"
+    onclick="loadHistory()"
+>
+History
+</button>
+
+<button
+    class="btn btn-outline-success"
+    onclick="exportReport()"
+>
+Export Job Report
+</button>
+
+</div>
+
+</div>
+
+
+<!-- ====================================================== -->
+<!-- DIAGNOSTIC -->
+<!-- ====================================================== -->
+
+<div class="card mb-4">
+
+<div class="card-body">
+
+<h5>
+Diagnostic Result
+</h5>
+
+<div class="table-responsive">
+
+<table class="table table-hover">
+
+<thead>
+
+<tr>
+
+<th>
+Check
+</th>
+
+<th>
+Status
+</th>
+
+<th>
+Value
+</th>
+
+<th>
+Evidence
+</th>
+
+<th>
+Action
+</th>
+
+</tr>
+
+</thead>
+
+<tbody id="diagnosticBody">
+
+<tr>
+
+<td colspan="5">
+Run diagnostic to begin.
+</td>
+
+</tr>
+
+</tbody>
+
+</table>
+
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ====================================================== -->
+<!-- PROCESS -->
+<!-- ====================================================== -->
+
+<div
+    id="processCard"
+    class="card mb-4 hidden"
+>
+
+<div class="card-body">
+
+<h5>
+Processes
+</h5>
+
+<input
+    id="processSearch"
+    class="form-control mb-3"
+    placeholder="Search process..."
+    oninput="renderProcesses()"
+>
+
+<div class="table-responsive">
+
+<table class="table table-sm">
+
+<thead>
+
+<tr>
+
+<th>Name</th>
+<th>PID</th>
+<th>CPU</th>
+<th>RAM</th>
+<th>Path</th>
+<th>Action</th>
+
+</tr>
+
+</thead>
+
+<tbody id="processBody"></tbody>
+
+</table>
+
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ====================================================== -->
+<!-- EVENTS -->
+<!-- ====================================================== -->
+
+<div
+    id="eventCard"
+    class="card mb-4 hidden"
+>
+
+<div class="card-body">
+
+<h5>
+Windows Events
+</h5>
+
+<div class="table-responsive">
+
+<table class="table table-sm">
+
+<thead>
+
+<tr>
+
+<th>Time</th>
+<th>Log</th>
+<th>Level</th>
+<th>ID</th>
+<th>Provider</th>
+<th>Message</th>
+
+</tr>
+
+</thead>
+
+<tbody id="eventBody"></tbody>
+
+</table>
+
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ====================================================== -->
+<!-- HISTORY -->
+<!-- ====================================================== -->
+
+<div
+    id="historyCard"
+    class="card mb-4 hidden"
+>
+
+<div class="card-body">
+
+<h5>
+Job History
+</h5>
+
+<div class="table-responsive">
+
+<table class="table table-sm">
+
+<thead>
+
+<tr>
+
+<th>Time</th>
+<th>Action</th>
+<th>Target</th>
+<th>Result</th>
+
+</tr>
+
+</thead>
+
+<tbody id="historyBody"></tbody>
+
+</table>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ====================================================== -->
+<!-- END JOB MODAL -->
+<!-- ====================================================== -->
+
+<div
+    class="modal fade"
+    id="endJobModal"
+>
+
+<div class="modal-dialog">
+
+<div class="modal-content">
+
+<div class="modal-header">
+
+<h5 class="modal-title">
+End Diagnostic Job
+</h5>
+
+</div>
+
+<div class="modal-body">
+
+<p>
+Are you sure you want to finish this job?
+</p>
+
+<div class="alert alert-warning">
+
+After ending the job:
+
+<ul>
+
+<li>
+Job is marked completed
+</li>
+
+<li>
+Report can be exported
+</li>
+
+<li>
+Agent will stop
+</li>
+
+<li>
+No permanent Agent remains
+</li>
+
+</ul>
+
+</div>
+
+</div>
+
+<div class="modal-footer">
+
+<button
+    class="btn btn-secondary"
+    data-bs-dismiss="modal"
+>
+Cancel
+</button>
+
+<button
+    class="btn btn-danger"
+    onclick="confirmEndJob()"
+>
+End Job
+</button>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
 
 <script>
 
-const API = "http://127.0.0.1:8765";
+const API =
+    "http://127.0.0.1:8765";
 
-let currentFix = null;
-let processes = [];
-let historyData = [];
+let processesData = [];
 
-function escapeHtml(value) {
-    if (value === null || value === undefined) return "";
-    return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-}
 
-async function api(path, options = {}, timeout = 10000) {
+// ==========================================================
+// API
+// ==========================================================
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
+async function api(
+    path,
+    options = {}
+) {
+
+    const controller =
+        new AbortController();
+
+    const timer =
+        setTimeout(
+            () => controller.abort(),
+            8000
+        );
 
     try {
 
-        const response = await fetch(API + path, {
-            ...options,
-            signal: controller.signal
-        });
+        const response =
+            await fetch(
+                API + path,
+                {
+                    ...options,
+                    signal:
+                        controller.signal
+                }
+            );
 
         if (!response.ok) {
-            throw new Error("HTTP " + response.status);
+
+            const text =
+                await response.text();
+
+            throw new Error(
+                text ||
+                "HTTP " +
+                response.status
+            );
         }
 
-        const text = await response.text();
+        return await response.json();
 
-        if (!text) return {};
+    }
+    finally {
 
-        try {
-            return JSON.parse(text);
-        } catch {
-            return text;
-        }
-
-    } finally {
         clearTimeout(timer);
     }
 }
 
-function toast(message, type = "primary") {
 
-    const id = "toast-" + Date.now();
-
-    const html = `
-        <div id="${id}" class="toast align-items-center text-bg-${type} border-0 mb-2"
-             role="alert">
-            <div class="d-flex">
-                <div class="toast-body">${escapeHtml(message)}</div>
-                <button type="button"
-                        class="btn-close btn-close-white me-2 m-auto"
-                        data-bs-dismiss="toast"></button>
-            </div>
-        </div>
-    `;
-
-    document.getElementById("toastContainer").insertAdjacentHTML(
-        "beforeend",
-        html
-    );
-
-    const el = document.getElementById(id);
-    const t = new bootstrap.Toast(el, {delay: 3500});
-    t.show();
-
-    el.addEventListener("hidden.bs.toast", () => el.remove());
-}
-
-function formatBytes(bytes) {
-
-    if (bytes === null || bytes === undefined) return "-";
-
-    const units = ["B", "KB", "MB", "GB", "TB"];
-
-    let i = 0;
-    let n = Number(bytes);
-
-    while (n >= 1024 && i < units.length - 1) {
-        n /= 1024;
-        i++;
-    }
-
-    return n.toFixed(i === 0 ? 0 : 1) + " " + units[i];
-}
-
-function formatDuration(seconds) {
-
-    seconds = Number(seconds || 0);
-
-    const d = Math.floor(seconds / 86400);
-    seconds %= 86400;
-
-    const h = Math.floor(seconds / 3600);
-    seconds %= 3600;
-
-    const m = Math.floor(seconds / 60);
-
-    return `${d}d ${h}h ${m}m`;
-}
-
-function setAgentOnline(online) {
-
-    const el = document.getElementById("agentStatus");
-
-    if (online) {
-
-        el.innerHTML =
-            `<span class="status-dot online"></span>Agent Online`;
-
-        document.getElementById("launcherCard").classList.add("d-none");
-
-    } else {
-
-        el.innerHTML =
-            `<span class="status-dot offline"></span>Agent Offline`;
-
-        document.getElementById("launcherCard").classList.remove("d-none");
-    }
-}
+// ==========================================================
+// AGENT
+// ==========================================================
 
 async function checkAgent() {
 
     try {
 
-        const data = await api("/system");
+        const data =
+            await api("/system");
 
-        setAgentOnline(true);
+        document
+            .getElementById("agentDot")
+            .className =
+                "status-dot online";
 
-        document.getElementById("systemCard").classList.remove("d-none");
+        document
+            .getElementById("agentStatus")
+            .textContent =
+                "Agent Online";
 
-        renderSystem(data);
+        return data;
 
-        return true;
+    }
+    catch {
 
-    } catch (e) {
+        document
+            .getElementById("agentDot")
+            .className =
+                "status-dot offline";
 
-        setAgentOnline(false);
+        document
+            .getElementById("agentStatus")
+            .textContent =
+                "Agent Offline";
 
-        return false;
+        return null;
     }
 }
 
-function renderSystem(data) {
 
-    document.getElementById("computerName").textContent =
-        data.ComputerName || "-";
+// ==========================================================
+// START JOB
+// ==========================================================
 
-    document.getElementById("windowsInfo").textContent =
-        `${data.OSCaption || ""} ${data.OSVersion || ""} (Build ${data.BuildNumber || "-"})`;
+async function startJob() {
 
-    document.getElementById("primaryIp").textContent =
-        data.PrimaryIP || "-";
+    const agent =
+        await checkAgent();
 
-    document.getElementById("uptime").textContent =
-        formatDuration(data.UptimeSeconds);
+    if (!agent) {
 
-    document.getElementById("agentAdmin").textContent =
-        data.IsAdmin ? "Administrator" : "Standard User";
+        alert(
+            "Agent is offline.\n\n" +
+            "Please run Start-Diagnostic.cmd first."
+        );
+
+        return;
+    }
+
+    const technician =
+        document
+            .getElementById(
+                "technicianInput"
+            )
+            .value;
+
+    const requestedJobId =
+        document
+            .getElementById(
+                "jobIdInput"
+            )
+            .value;
+
+    try {
+
+        const job =
+            await api(
+                "/job/start",
+                {
+                    method:"POST",
+                    headers:{
+                        "Content-Type":
+                            "application/json"
+                    },
+                    body:
+                        JSON.stringify({
+                            JobId:
+                                requestedJobId,
+                            Technician:
+                                technician
+                        })
+                }
+            );
+
+        showJob(job);
+
+    }
+    catch (e) {
+
+        alert(
+            "Unable to start job: " +
+            e.message
+        );
+    }
 }
+
+
+// ==========================================================
+// SHOW JOB
+// ==========================================================
+
+function showJob(job) {
+
+    document
+        .getElementById("startScreen")
+        .classList.add("hidden");
+
+    document
+        .getElementById("jobScreen")
+        .classList.remove("hidden");
+
+    document
+        .getElementById("jobId")
+        .textContent =
+            job.JobId;
+
+    document
+        .getElementById("jobComputer")
+        .textContent =
+            job.ComputerName;
+
+    document
+        .getElementById("jobStatus")
+        .textContent =
+            job.Status;
+
+    loadAll();
+}
+
+
+// ==========================================================
+// LOAD SYSTEM
+// ==========================================================
+
+async function loadSystem() {
+
+    try {
+
+        const data =
+            await api("/system");
+
+        document
+            .getElementById("pcName")
+            .textContent =
+                data.ComputerName;
+
+        document
+            .getElementById("windowsInfo")
+            .textContent =
+                data.Windows.Caption +
+                " " +
+                data.Windows.Build;
+
+        document
+            .getElementById("ipInfo")
+            .textContent =
+                (data.IP || []).join(", ");
+
+        document
+            .getElementById("agentVersion")
+            .textContent =
+                data.AgentVersion;
+
+    }
+    catch {}
+}
+
+
+// ==========================================================
+// METRICS
+// ==========================================================
 
 async function loadMetrics() {
 
     try {
 
-        const d = await api("/metrics");
+        const data =
+            await api("/metrics");
 
-        const cpu = Number(d.CPU || 0);
-        const ram = Number(d.RAMPercent || 0);
-        const disk = Number(d.DiskPercent || 0);
+        document
+            .getElementById("cpuMetric")
+            .textContent =
+                data.CPU + "%";
 
-        document.getElementById("cpuValue").textContent =
-            cpu.toFixed(0) + "%";
+        document
+            .getElementById("ramMetric")
+            .textContent =
+                data.RAM + "%";
 
-        document.getElementById("cpuDetail").textContent =
-            `${d.CPUName || "Processor"}`;
+        document
+            .getElementById("diskMetric")
+            .textContent =
+                data.DiskC + "%";
 
-        document.getElementById("ramValue").textContent =
-            ram.toFixed(0) + "%";
-
-        document.getElementById("ramDetail").textContent =
-            `${formatBytes(d.RAMUsed)} / ${formatBytes(d.RAMTotal)}`;
-
-        document.getElementById("diskValue").textContent =
-            disk.toFixed(0) + "%";
-
-        document.getElementById("diskDetail").textContent =
-            `${formatBytes(d.DiskUsed)} / ${formatBytes(d.DiskTotal)}`;
-
-        calculateHealth(cpu, ram, disk);
-
-    } catch (e) {
-
-        setAgentOnline(false);
     }
+    catch {}
 }
 
-function calculateHealth(cpu, ram, disk) {
 
-    let score = 100;
-
-    if (cpu >= 90) score -= 30;
-    else if (cpu >= 75) score -= 15;
-
-    if (ram >= 90) score -= 25;
-    else if (ram >= 80) score -= 10;
-
-    if (disk >= 95) score -= 30;
-    else if (disk >= 85) score -= 15;
-
-    score = Math.max(0, score);
-
-    document.getElementById("healthScore").textContent = score;
-
-    document.getElementById("healthScore").className =
-        "health-score " +
-        (score >= 80 ? "text-success" :
-         score >= 60 ? "text-warning" :
-         "text-danger");
-}
+// ==========================================================
+// NETWORK
+// ==========================================================
 
 async function loadNetwork() {
 
     try {
 
-        const d = await api("/network");
+        const data =
+            await api("/network");
 
-        document.getElementById("netAdapter").innerHTML =
-            d.AdapterOK
-                ? `<span class="text-success">✓ ${escapeHtml(d.AdapterName || "Connected")}</span>`
-                : `<span class="text-danger">✕ No active adapter</span>`;
+        document
+            .getElementById("netAdapter")
+            .textContent =
+                data.Adapter || "-";
 
-        document.getElementById("netGateway").innerHTML =
-            d.Gateway
-                ? `<span class="text-success">✓ ${escapeHtml(d.Gateway)}</span>`
-                : `<span class="text-danger">✕ None</span>`;
+        document
+            .getElementById("gateway")
+            .textContent =
+                data.Gateway || "-";
 
-        document.getElementById("netGatewayPing").innerHTML =
-            d.GatewayPingOK
-                ? `<span class="text-success">✓ ${d.GatewayLatencyMs || "-"} ms</span>`
-                : `<span class="text-danger">✕ Failed</span>`;
+        document
+            .getElementById("gatewayPing")
+            .textContent =
+                data.GatewayPing
+                    ? "OK"
+                    : "FAIL";
 
-        document.getElementById("netDns").innerHTML =
-            d.DNSOK
-                ? `<span class="text-success">✓ ${escapeHtml(d.DNSAddress || "OK")}</span>`
-                : `<span class="text-danger">✕ Failed</span>`;
+        document
+            .getElementById("dnsStatus")
+            .textContent =
+                data.DNSTest
+                    ? "OK"
+                    : "FAIL";
 
-        document.getElementById("netInternet").innerHTML =
-            d.InternetOK
-                ? `<span class="text-success">✓ Online ${d.InternetLatencyMs ? "(" + d.InternetLatencyMs + " ms)" : ""}</span>`
-                : `<span class="text-danger">✕ Offline</span>`;
+        document
+            .getElementById("internetStatus")
+            .textContent =
+                data.Internet
+                    ? "ONLINE"
+                    : "OFFLINE";
 
-        document.getElementById("networkValue").textContent =
-            d.InternetOK ? "ONLINE" : "OFFLINE";
-
-        document.getElementById("networkDetail").textContent =
-            d.InternetOK
-                ? `Gateway ${d.GatewayPingOK ? "OK" : "FAIL"} / DNS ${d.DNSOK ? "OK" : "FAIL"}`
-                : "Internet connection failed";
-
-    } catch (e) {
-
-        document.getElementById("networkValue").textContent = "ERROR";
     }
+    catch {}
 }
 
-async function loadServices() {
 
-    try {
+// ==========================================================
+// DIAGNOSTIC
+// ==========================================================
 
-        const d = await api("/services");
+async function runDiagnostics() {
 
-        const list = d.Services || [];
+    const body =
+        document.getElementById(
+            "diagnosticBody"
+        );
 
-        if (!list.length) {
-            document.getElementById("servicesSummary").innerHTML =
-                `<span class="text-muted">No service data</span>`;
-            return;
-        }
-
-        document.getElementById("servicesSummary").innerHTML =
-            list.map(s => {
-
-                const ok =
-                    String(s.Status).toLowerCase() === "running";
-
-                return `
-                    <div class="check-row d-flex justify-content-between">
-                        <span>
-                            ${escapeHtml(s.DisplayName || s.Name)}
-                            <div class="small-muted">${escapeHtml(s.Name)}</div>
-                        </span>
-
-                        <span class="${ok ? "text-success" : "text-danger"}">
-                            ${ok ? "● Running" : "● " + escapeHtml(s.Status)}
-                        </span>
-                    </div>
-                `;
-
-            }).join("");
-
-    } catch (e) {
-
-        document.getElementById("servicesSummary").innerHTML =
-            `<span class="text-danger">Unable to read services</span>`;
-    }
-}
-
-async function runDiagnostic() {
-
-    const result = document.getElementById("diagnosticResults");
-
-    result.innerHTML = `
-        <div class="text-center py-5">
-            <div class="spinner-border"></div>
-            <div class="mt-2">Running full diagnostic...</div>
-        </div>
+    body.innerHTML = `
+        <tr>
+            <td colspan="5">
+                Running diagnostic...
+            </td>
+        </tr>
     `;
 
     try {
 
-        const d = await api("/diagnose", {}, 30000);
+        const data =
+            await api("/diagnose");
 
-        const checks = d.Checks || [];
-        const problems = checks.filter(x => x.Status === "Problem");
+        document
+            .getElementById("healthMetric")
+            .textContent =
+                data.Score + "/100";
 
-        document.getElementById("diagnosticSummary").innerHTML = `
-            <div class="alert ${problems.length ? "alert-danger" : "alert-success"}">
-                <strong>
-                    ${problems.length
-                        ? problems.length + " problem(s) detected"
-                        : "System looks healthy"}
-                </strong>
+        body.innerHTML = "";
 
-                <span class="float-end">
-                    ${d.DurationMs || 0} ms
-                </span>
-            </div>
-        `;
+        for (
+            const item of
+            data.Results
+        ) {
 
-        if (!checks.length) {
-            result.innerHTML =
-                `<div class="alert alert-warning">No diagnostic results.</div>`;
-            return;
-        }
+            const tr =
+                document.createElement("tr");
 
-        result.innerHTML = checks.map(check => {
+            let badge =
+                "secondary";
 
-            const isProblem = check.Status === "Problem";
-            const isWarning = check.Status === "Warning";
+            if (
+                item.Status === "PASS"
+            ) {
+                badge = "success";
+            }
 
-            const cls =
-                isProblem ? "problem-card" :
-                isWarning ? "info-card" :
-                "ok-card";
+            if (
+                item.Status === "WARN"
+            ) {
+                badge = "warning";
+            }
 
-            const badge =
-                isProblem
-                    ? `<span class="badge bg-danger">PROBLEM</span>`
-                    : isWarning
-                        ? `<span class="badge bg-warning text-dark">WARNING</span>`
-                        : `<span class="badge bg-success">OK</span>`;
+            if (
+                item.Status === "FAIL"
+            ) {
+                badge = "danger";
+            }
 
-            const fixButton =
-                isProblem && check.FixAction
-                    ? `
-                        <button class="btn btn-sm btn-danger"
-                                onclick='openFix(${JSON.stringify(check)})'>
+            let action = "";
+
+            if (
+                item.FixAvailable
+            ) {
+
+                let fixId = null;
+
+                if (
+                    item.Id === "network"
+                ) {
+                    fixId =
+                        "flush-dns";
+                }
+
+                if (
+                    item.Id === "spooler"
+                ) {
+                    fixId =
+                        "restart-spooler";
+                }
+
+                if (
+                    item.Id === "windows-update"
+                ) {
+                    fixId =
+                        "restart-service-wuauserv";
+                }
+
+                if (
+                    item.Id === "defender"
+                ) {
+                    fixId =
+                        "enable-defender";
+                }
+
+                if (fixId) {
+
+                    action = `
+                        <button
+                            class="btn btn-sm btn-outline-primary"
+                            onclick="runFix('${fixId}')"
+                        >
                             Fix
                         </button>
-                    `
-                    : "";
+                    `;
+                }
+            }
 
-            return `
-                <div class="card mb-3 ${cls}">
-                    <div class="card-body">
+            tr.innerHTML = `
 
-                        <div class="d-flex justify-content-between">
-                            <h6>${escapeHtml(check.Title)}</h6>
-                            ${badge}
-                        </div>
+                <td>
+                    <strong>
+                        ${escapeHtml(
+                            item.Name
+                        )}
+                    </strong>
+                </td>
 
-                        <p class="mb-2">
-                            ${escapeHtml(check.Message || "")}
-                        </p>
+                <td>
+                    <span
+                        class="badge text-bg-${badge}"
+                    >
+                        ${escapeHtml(
+                            item.Status
+                        )}
+                    </span>
+                </td>
 
-                        <div class="small-muted">
-                            <strong>Evidence:</strong>
-                            ${escapeHtml(check.Evidence || "-")}
-                        </div>
+                <td>
+                    ${escapeHtml(
+                        String(
+                            item.Value
+                        )
+                    )}
+                </td>
 
-                        <div class="small-muted mt-1">
-                            <strong>Check time:</strong>
-                            ${check.DurationMs || 0} ms
-                        </div>
+                <td>
+                    ${escapeHtml(
+                        item.Evidence
+                    )}
+                </td>
 
-                        ${fixButton
-                            ? `<div class="mt-3">${fixButton}</div>`
-                            : ""}
-
-                    </div>
-                </div>
+                <td>
+                    ${action}
+                </td>
             `;
 
-        }).join("");
+            body.appendChild(tr);
+        }
 
-    } catch (e) {
+    }
+    catch (e) {
 
-        result.innerHTML =
-            `<div class="alert alert-danger">
-                Diagnostic failed: ${escapeHtml(e.message)}
-             </div>`;
+        body.innerHTML = `
+            <tr>
+                <td
+                    colspan="5"
+                    class="text-danger"
+                >
+                    ${escapeHtml(
+                        e.message
+                    )}
+                </td>
+            </tr>
+        `;
     }
 }
 
-function openFix(problem) {
 
-    currentFix = problem;
+// ==========================================================
+// FIX
+// ==========================================================
 
-    document.getElementById("fixProblem").textContent =
-        problem.Title || "-";
+async function runFix(id) {
 
-    document.getElementById("fixEvidence").textContent =
-        problem.Evidence || problem.Message || "-";
-
-    document.getElementById("fixAction").textContent =
-        problem.FixAction || "-";
-
-    document.getElementById("fixResult").innerHTML = "";
-
-    document.getElementById("fixProgress").classList.add("d-none");
-
-    document.getElementById("confirmFixBtn").disabled = false;
-
-    new bootstrap.Modal(
-        document.getElementById("fixModal")
-    ).show();
-}
-
-async function executeFix() {
-
-    if (!currentFix) return;
-
-    const btn = document.getElementById("confirmFixBtn");
-
-    btn.disabled = true;
-
-    document.getElementById("fixProgress")
-        .classList.remove("d-none");
-
-    document.getElementById("fixResult").innerHTML = "";
+    if (
+        !confirm(
+            "Run fix: " + id + "?"
+        )
+    ) {
+        return;
+    }
 
     try {
 
-        const before = currentFix.Evidence || currentFix.Message || "";
+        const result =
+            await api(
+                "/fix",
+                {
+                    method:"POST",
+                    headers:{
+                        "Content-Type":
+                            "application/json"
+                    },
+                    body:
+                        JSON.stringify({
+                            fix:id
+                        })
+                }
+            );
 
-        const result = await api("/fix", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                Action: currentFix.FixAction,
-                ProblemId: currentFix.Id,
-                Problem: currentFix.Title,
-                Before: before
-            })
-        }, 30000);
-
-        await new Promise(r => setTimeout(r, 1000));
-
-        const afterDiagnostic = await api(
-            "/diagnose",
-            {},
-            30000
+        alert(
+            result.Message ||
+            "Fix completed"
         );
 
-        const checks = afterDiagnostic.Checks || [];
+        await runDiagnostics();
 
-        const same = checks.find(
-            x => x.Id === currentFix.Id
+        await loadHistory();
+
+    }
+    catch (e) {
+
+        alert(
+            "Fix failed: " +
+            e.message
         );
-
-        const verified =
-            !same || same.Status !== "Problem";
-
-        document.getElementById("fixResult").innerHTML = `
-            <div class="alert ${verified ? "alert-success" : "alert-danger"}">
-
-                <strong>
-                    ${verified
-                        ? "✓ Fix verified"
-                        : "✕ Fix did not resolve the problem"}
-                </strong>
-
-                <hr>
-
-                <div>
-                    <strong>Action:</strong>
-                    ${escapeHtml(result.Message || currentFix.FixAction)}
-                </div>
-
-                <div class="mt-2">
-                    <strong>Before:</strong>
-                    ${escapeHtml(before)}
-                </div>
-
-                <div class="mt-2">
-                    <strong>After:</strong>
-                    ${escapeHtml(
-                        same
-                            ? (same.Evidence || same.Message || same.Status)
-                            : "Problem no longer detected"
-                    )}
-                </div>
-
-            </div>
-        `;
-
-        if (verified) {
-            toast("Fix completed and verified.", "success");
-        } else {
-            toast("Fix executed but problem remains.", "danger");
-        }
-
-        await refreshAll();
-
-    } catch (e) {
-
-        document.getElementById("fixResult").innerHTML =
-            `<div class="alert alert-danger">
-                Fix failed: ${escapeHtml(e.message)}
-             </div>`;
-
-        toast("Fix failed.", "danger");
-
-    } finally {
-
-        btn.disabled = false;
-
-        document.getElementById("fixProgress")
-            .classList.add("d-none");
     }
 }
+
+
+// ==========================================================
+// PROCESSES
+// ==========================================================
 
 async function loadProcesses() {
 
     try {
 
-        const d = await api("/processes", {}, 15000);
+        const data =
+            await api("/processes");
 
-        processes = d.Processes || [];
+        processesData =
+            data;
+
+        document
+            .getElementById(
+                "processCard"
+            )
+            .classList.remove("hidden");
 
         renderProcesses();
 
-    } catch (e) {
-
-        document.getElementById("processTable").innerHTML =
-            `<tr>
-                <td colspan="7" class="text-danger text-center">
-                    ${escapeHtml(e.message)}
-                </td>
-             </tr>`;
     }
+    catch {}
 }
 
-function filterProcesses() {
-    renderProcesses();
-}
 
 function renderProcesses() {
 
     const search =
-        document.getElementById("processSearch").value
+        document
+            .getElementById(
+                "processSearch"
+            )
+            .value
             .toLowerCase();
 
-    const sort =
-        document.getElementById("processSort").value;
+    const body =
+        document.getElementById(
+            "processBody"
+        );
 
-    let list = processes.filter(p => {
+    body.innerHTML = "";
 
-        const text = [
-            p.Name,
-            p.PID,
-            p.Path,
-            p.User
-        ].join(" ").toLowerCase();
+    const filtered =
+        processesData
+            .filter(p =>
+                !search ||
+                p.Name
+                    .toLowerCase()
+                    .includes(search) ||
+                String(p.PID)
+                    .includes(search)
+            )
+            .slice(0,200);
 
-        return text.includes(search);
-    });
+    for (
+        const p of filtered
+    ) {
 
-    list.sort((a, b) => {
+        const tr =
+            document.createElement("tr");
 
-        if (sort === "cpu")
-            return Number(b.CPUPercent || 0) -
-                   Number(a.CPUPercent || 0);
+        let action = "";
 
-        if (sort === "ram")
-            return Number(b.RAMBytes || 0) -
-                   Number(a.RAMBytes || 0);
+        if (!p.Protected) {
 
-        if (sort === "pid")
-            return Number(a.PID || 0) -
-                   Number(b.PID || 0);
-
-        return String(a.Name || "")
-            .localeCompare(String(b.Name || ""));
-    });
-
-    if (!list.length) {
-
-        document.getElementById("processTable").innerHTML =
-            `<tr>
-                <td colspan="7" class="text-center text-muted">
-                    No matching process
-                </td>
-             </tr>`;
-
-        return;
-    }
-
-    document.getElementById("processTable").innerHTML =
-        list.map(p => {
-
-            const protectedText =
-                p.Protected
-                    ? `<span class="badge bg-warning text-dark">Protected</span>`
-                    : `<span class="badge bg-light text-dark">No</span>`;
-
-            const kill =
-                p.Protected
-                    ? ""
-                    : `
-                        <button class="btn btn-sm btn-outline-danger"
-                                onclick="killProcess(${Number(p.PID)}, '${escapeJs(p.Name)}')">
-                            Kill
-                        </button>
-                    `;
-
-            return `
-                <tr>
-
-                    <td>
-                        <strong>${escapeHtml(p.Name)}</strong>
-                        <div class="small-muted mono">
-                            ${escapeHtml(p.Path || "-")}
-                        </div>
-                    </td>
-
-                    <td class="mono">${p.PID}</td>
-
-                    <td>
-                        ${Number(p.CPUPercent || 0).toFixed(1)}%
-                    </td>
-
-                    <td>
-                        ${formatBytes(p.RAMBytes)}
-                    </td>
-
-                    <td>
-                        ${escapeHtml(p.User || "-")}
-                    </td>
-
-                    <td>
-                        ${protectedText}
-                    </td>
-
-                    <td>
-                        ${kill}
-                    </td>
-
-                </tr>
+            action = `
+                <button
+                    class="btn btn-sm btn-outline-danger"
+                    onclick="killProcess(${p.PID}, '${escapeJs(p.Name)}')"
+                >
+                    Kill
+                </button>
             `;
 
-        }).join("");
+        }
+        else {
+
+            action = `
+                <span
+                    class="badge text-bg-secondary"
+                >
+                    Protected
+                </span>
+            `;
+        }
+
+        tr.innerHTML = `
+
+            <td>
+                ${escapeHtml(p.Name)}
+            </td>
+
+            <td>
+                ${p.PID}
+            </td>
+
+            <td>
+                ${p.CPU}
+            </td>
+
+            <td>
+                ${p.RAMMB} MB
+            </td>
+
+            <td
+                style="
+                    max-width:350px;
+                    overflow:hidden;
+                    text-overflow:ellipsis
+                "
+            >
+                ${escapeHtml(
+                    p.Path || "-"
+                )}
+            </td>
+
+            <td>
+                ${action}
+            </td>
+        `;
+
+        body.appendChild(tr);
+    }
 }
 
-function escapeJs(value) {
 
-    return String(value || "")
-        .replaceAll("\\", "\\\\")
-        .replaceAll("'", "\\'");
-}
+async function killProcess(
+    pid,
+    name
+) {
 
-async function killProcess(pid, name) {
-
-    if (!confirm(
-        `Kill process?\n\n${name} (PID ${pid})`
-    )) {
+    if (
+        !confirm(
+            "Terminate process?\n\n" +
+            name +
+            " (" +
+            pid +
+            ")"
+        )
+    ) {
         return;
     }
 
     try {
 
-        const result = await api("/kill", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                PID: pid,
-                Name: name
-            })
-        }, 15000);
-
-        toast(
-            result.Message || "Process terminated.",
-            "success"
+        await api(
+            "/kill",
+            {
+                method:"POST",
+                headers:{
+                    "Content-Type":
+                        "application/json"
+                },
+                body:
+                    JSON.stringify({
+                        pid:pid
+                    })
+            }
         );
 
         await loadProcesses();
+
         await loadHistory();
 
-    } catch (e) {
+    }
+    catch (e) {
 
-        toast(
-            "Kill failed: " + e.message,
-            "danger"
+        alert(
+            "Kill failed: " +
+            e.message
         );
     }
 }
 
+
+// ==========================================================
+// EVENTS
+// ==========================================================
+
 async function loadEvents() {
-
-    const container =
-        document.getElementById("eventResults");
-
-    container.innerHTML =
-        `<div class="text-center py-4">
-            <div class="spinner-border"></div>
-         </div>`;
 
     try {
 
-        const d = await api("/events", {}, 20000);
+        const data =
+            await api("/events");
 
-        const events = d.Events || [];
+        document
+            .getElementById(
+                "eventCard"
+            )
+            .classList.remove("hidden");
 
-        if (!events.length) {
+        const body =
+            document.getElementById(
+                "eventBody"
+            );
 
-            container.innerHTML =
-                `<div class="alert alert-success">
-                    No recent Critical/Error events found.
-                 </div>`;
+        body.innerHTML = "";
 
-            return;
+        for (
+            const e of data
+        ) {
+
+            const tr =
+                document.createElement("tr");
+
+            tr.innerHTML = `
+
+                <td>
+                    ${escapeHtml(
+                        new Date(
+                            e.Time
+                        ).toLocaleString()
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        e.Log
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        e.Level || "-"
+                    )}
+                </td>
+
+                <td>
+                    ${e.Id}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        e.Provider || "-"
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        e.Message || "-"
+                    )}
+                </td>
+            `;
+
+            body.appendChild(tr);
         }
 
-        container.innerHTML =
-            events.map(e => {
-
-                const level =
-                    String(e.Level || "").toLowerCase();
-
-                const cls =
-                    level.includes("critical")
-                        ? "danger"
-                        : "warning";
-
-                return `
-                    <div class="card mb-3">
-                        <div class="card-body">
-
-                            <div class="d-flex justify-content-between">
-
-                                <strong>
-                                    ${escapeHtml(e.Provider || "Windows")}
-                                </strong>
-
-                                <span class="badge bg-${cls}">
-                                    ${escapeHtml(e.Level)}
-                                </span>
-
-                            </div>
-
-                            <div class="small-muted">
-                                ${escapeHtml(e.Time)}
-                                · Event ID ${escapeHtml(e.Id)}
-                                · ${escapeHtml(e.LogName)}
-                            </div>
-
-                            <div class="event-message mt-2">
-                                ${escapeHtml(e.Message)}
-                            </div>
-
-                        </div>
-                    </div>
-                `;
-
-            }).join("");
-
-    } catch (e) {
-
-        container.innerHTML =
-            `<div class="alert alert-danger">
-                Event log read failed: ${escapeHtml(e.message)}
-             </div>`;
     }
+    catch {}
 }
+
+
+// ==========================================================
+// HISTORY
+// ==========================================================
 
 async function loadHistory() {
 
     try {
 
-        const d = await api("/history");
+        const data =
+            await api("/history");
 
-        historyData = d.History || [];
+        document
+            .getElementById(
+                "historyCard"
+            )
+            .classList.remove("hidden");
 
-        document.getElementById("historyTable").innerHTML =
-            historyData.map(h => {
+        const body =
+            document.getElementById(
+                "historyBody"
+            );
 
-                const result =
-                    String(h.Result || "").toUpperCase();
+        body.innerHTML = "";
 
-                const cls =
-                    result.includes("SUCCESS") ||
-                    result.includes("VERIFIED")
-                        ? "success"
-                        : result.includes("FAIL")
-                            ? "danger"
-                            : "secondary";
+        for (
+            const item of
+            data
+                .slice()
+                .reverse()
+                .slice(0,200)
+        ) {
 
-                return `
-                    <tr>
+            const tr =
+                document.createElement("tr");
 
-                        <td class="small-muted">
-                            ${escapeHtml(h.Timestamp)}
-                        </td>
+            tr.innerHTML = `
 
-                        <td>
-                            ${escapeHtml(h.ComputerName || "-")}
-                        </td>
-
-                        <td>
-                            ${escapeHtml(h.Problem || h.Event || "-")}
-                        </td>
-
-                        <td class="mono">
-                            ${escapeHtml(h.Action || "-")}
-                        </td>
-
-                        <td>
-                            ${escapeHtml(h.Before || "-")}
-                        </td>
-
-                        <td>
-                            ${escapeHtml(h.After || "-")}
-                        </td>
-
-                        <td>
-                            <span class="badge bg-${cls}">
-                                ${escapeHtml(h.Result || "-")}
-                            </span>
-                        </td>
-
-                    </tr>
-                `;
-
-            }).join("");
-
-    } catch (e) {
-
-        document.getElementById("historyTable").innerHTML =
-            `<tr>
-                <td colspan="7" class="text-danger">
-                    ${escapeHtml(e.message)}
+                <td>
+                    ${escapeHtml(
+                        new Date(
+                            item.Timestamp
+                        ).toLocaleString()
+                    )}
                 </td>
-             </tr>`;
+
+                <td>
+                    ${escapeHtml(
+                        item.Action
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.Target
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.Result
+                    )}
+                </td>
+            `;
+
+            body.appendChild(tr);
+        }
+
     }
+    catch {}
 }
 
-function exportHistory() {
 
-    window.open(API + "/export", "_blank");
-}
+// ==========================================================
+// EXPORT
+// ==========================================================
 
-function copyLauncher() {
-
-    const input =
-        document.getElementById("launcherCommand");
-
-    navigator.clipboard.writeText(input.value);
-
-    toast("Launcher command copied.", "success");
-}
-
-async function stopAgent() {
-
-    if (!confirm("Stop the local diagnostic agent?")) {
-        return;
-    }
+async function exportReport() {
 
     try {
 
-        await api("/stop", {
-            method: "POST"
-        });
+        const data =
+            await api(
+                "/job/export"
+            );
 
-        toast("Agent stopping...", "warning");
+        const blob =
+            new Blob(
+                [
+                    JSON.stringify(
+                        data,
+                        null,
+                        2
+                    )
+                ],
+                {
+                    type:
+                        "application/json"
+                }
+            );
 
-        setTimeout(checkAgent, 1000);
+        const url =
+            URL.createObjectURL(
+                blob
+            );
 
-    } catch (e) {
+        const a =
+            document.createElement(
+                "a"
+            );
 
-        toast("Unable to stop agent.", "danger");
+        const jobId =
+            data.Job.JobId;
+
+        a.href =
+            url;
+
+        a.download =
+            jobId +
+            "-diagnostic-report.json";
+
+        a.click();
+
+        URL.revokeObjectURL(
+            url
+        );
+
+    }
+    catch (e) {
+
+        alert(
+            "Export failed: " +
+            e.message
+        );
     }
 }
 
-async function refreshAll() {
+
+// ==========================================================
+// END JOB
+// ==========================================================
+
+function endJob() {
+
+    const modal =
+        new bootstrap.Modal(
+            document.getElementById(
+                "endJobModal"
+            )
+        );
+
+    modal.show();
+}
+
+
+async function confirmEndJob() {
+
+    try {
+
+        const job =
+            await api(
+                "/job/end",
+                {
+                    method:"POST"
+                }
+            );
+
+        const modalElement =
+            document.getElementById(
+                "endJobModal"
+            );
+
+        const modal =
+            bootstrap.Modal
+                .getInstance(
+                    modalElement
+                );
+
+        if (modal) {
+            modal.hide();
+        }
+
+        const exportNow =
+            confirm(
+                "Job completed.\n\n" +
+                "Export report now?"
+            );
+
+        if (exportNow) {
+
+            await exportReport();
+        }
+
+        setTimeout(
+            async () => {
+
+                try {
+
+                    await api(
+                        "/agent/stop"
+                    );
+
+                }
+                catch {}
+
+                document
+                    .getElementById(
+                        "jobScreen"
+                    )
+                    .classList.add(
+                        "hidden"
+                    );
+
+                document
+                    .getElementById(
+                        "startScreen"
+                    )
+                    .classList.remove(
+                        "hidden"
+                    );
+
+                document
+                    .getElementById(
+                        "agentDot"
+                    )
+                    .className =
+                        "status-dot offline";
+
+                document
+                    .getElementById(
+                        "agentStatus"
+                    )
+                    .textContent =
+                        "Job Completed";
+
+            },
+            1000
+        );
+
+    }
+    catch (e) {
+
+        alert(
+            "Unable to end job: " +
+            e.message
+        );
+    }
+}
+
+
+// ==========================================================
+// LOAD ALL
+// ==========================================================
+
+async function loadAll() {
 
     await checkAgent();
 
     await Promise.all([
+        loadSystem(),
         loadMetrics(),
-        loadNetwork(),
-        loadServices(),
-        loadProcesses(),
-        loadHistory()
+        loadNetwork()
     ]);
+
 }
 
-document
-    .querySelector('[data-bs-target="#eventTab"]')
-    .addEventListener("shown.bs.tab", loadEvents);
 
-document
-    .querySelector('[data-bs-target="#historyTab"]')
-    .addEventListener("shown.bs.tab", loadHistory);
+// ==========================================================
+// ESCAPE
+// ==========================================================
 
-document
-    .querySelector('[data-bs-target="#processTab"]')
-    .addEventListener("shown.bs.tab", loadProcesses);
+function escapeHtml(value) {
 
-refreshAll();
+    if (
+        value === null ||
+        value === undefined
+    ) {
+        return "";
+    }
 
-setInterval(loadMetrics, 5000);
-setInterval(loadNetwork, 10000);
-setInterval(checkAgent, 10000);
+    return String(value)
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+        .replaceAll(
+            "'",
+            "&#039;"
+        );
+}
+
+
+function escapeJs(value) {
+
+    return String(value)
+        .replaceAll(
+            "\\",
+            "\\\\"
+        )
+        .replaceAll(
+            "'",
+            "\\'"
+        );
+}
+
+
+// ==========================================================
+// AGENT HEARTBEAT
+// ==========================================================
+
+setInterval(
+    async () => {
+
+        const data =
+            await checkAgent();
+
+        if (data) {
+
+            await loadMetrics();
+        }
+
+    },
+    3000
+);
 
 </script>
 
+
+<script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+></script>
+
 </body>
+
 </html>
