@@ -1,485 +1,558 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IT Field Diagnostic Portal V2</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cloud IT Diagnostic Portal V3</title>
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <style>
-        :root {
-            --app-bg: #f4f7fb;
-            --card-radius: 14px;
-        }
+<style>
+    body {
+        background: #f4f6f9;
+        color: #212529;
+    }
 
-        body {
-            background: var(--app-bg);
-            font-family: "Segoe UI", Tahoma, sans-serif;
-            color: #212529;
-        }
+    .navbar-brand {
+        font-weight: 700;
+    }
 
-        .app-container {
-            max-width: 1180px;
-        }
+    .card {
+        border: 0;
+        border-radius: 14px;
+        box-shadow: 0 3px 15px rgba(0,0,0,.06);
+    }
 
-        .card-custom {
-            border: 0;
-            border-radius: var(--card-radius);
-            box-shadow: 0 3px 14px rgba(0,0,0,.07);
-            margin-bottom: 20px;
-        }
+    .metric-card {
+        min-height: 145px;
+    }
 
-        .metric-card {
-            transition: transform .15s ease, box-shadow .15s ease;
-        }
+    .metric-value {
+        font-size: 2rem;
+        font-weight: 700;
+    }
 
-        .metric-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0,0,0,.09);
-        }
+    .metric-label {
+        color: #6c757d;
+        font-size: .9rem;
+    }
 
-        .metric-value {
-            font-size: 2rem;
-            font-weight: 700;
-        }
+    .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
 
-        .severity-critical {
-            border-left: 5px solid #dc3545;
-        }
+    .online {
+        background: #198754;
+    }
 
-        .severity-warning {
-            border-left: 5px solid #ffc107;
-        }
+    .offline {
+        background: #dc3545;
+    }
 
-        .severity-info {
-            border-left: 5px solid #0d6efd;
-        }
+    .warning {
+        background: #ffc107;
+    }
 
-        .launcher-box {
-            background: #171a1d;
-            color: #00ff66;
-            padding: 14px;
-            border-radius: 10px;
-            font-family: Consolas, monospace;
-            word-break: break-all;
-        }
+    .health-score {
+        font-size: 3rem;
+        font-weight: 800;
+    }
 
-        .nav-pills .nav-link {
-            font-weight: 600;
-        }
+    .health-ring {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        border: 10px solid #dee2e6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: auto;
+    }
 
-        .process-item {
-            min-height: 72px;
-        }
+    .check-row {
+        padding: 12px;
+        border-bottom: 1px solid #eee;
+    }
 
-        .table-responsive {
-            border-radius: 10px;
-        }
+    .check-row:last-child {
+        border-bottom: 0;
+    }
 
-        .status-dot {
-            display: inline-block;
-            width: 9px;
-            height: 9px;
-            border-radius: 50%;
-            background: currentColor;
-            margin-right: 5px;
-        }
+    .problem-card {
+        border-left: 5px solid #dc3545;
+    }
 
-        .small-muted {
-            font-size: .82rem;
-            color: #6c757d;
-        }
+    .ok-card {
+        border-left: 5px solid #198754;
+    }
 
-        .empty-state {
-            padding: 45px 15px;
-            text-align: center;
-            color: #6c757d;
-        }
+    .info-card {
+        border-left: 5px solid #0d6efd;
+    }
 
-        .toast-container {
-            z-index: 9999;
-        }
-    </style>
+    .process-table td,
+    .process-table th {
+        vertical-align: middle;
+        font-size: .9rem;
+    }
+
+    .small-muted {
+        font-size: .8rem;
+        color: #6c757d;
+    }
+
+    .mono {
+        font-family: Consolas, monospace;
+    }
+
+    .tab-pane {
+        padding-top: 20px;
+    }
+
+    .loading {
+        opacity: .55;
+        pointer-events: none;
+    }
+
+    .badge-soft {
+        background: #eef2f7;
+        color: #495057;
+    }
+
+    .event-message {
+        white-space: pre-wrap;
+        max-height: 120px;
+        overflow: auto;
+        font-size: .85rem;
+    }
+
+    #toastContainer {
+        position: fixed;
+        right: 20px;
+        bottom: 20px;
+        z-index: 9999;
+    }
+</style>
 </head>
 
-<body class="py-4">
+<body>
 
-<div class="container app-container">
+<nav class="navbar navbar-dark bg-dark">
+    <div class="container-fluid">
+        <span class="navbar-brand">
+            🛠 Cloud IT Diagnostic Portal <span class="badge bg-primary">V3</span>
+        </span>
 
-    <!-- HEADER -->
-    <div class="card card-custom p-4 bg-white">
-        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
-
-            <div>
-                <div class="d-flex align-items-center gap-2">
-                    <span class="fs-3">🛠️</span>
-                    <div>
-                        <h3 class="fw-bold m-0">Cloud IT Diagnostic Portal</h3>
-                        <div class="small-muted mt-1">
-                            Windows Local Diagnostic Agent V2
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-3">
-                    <span id="agent-status" class="badge bg-secondary">
-                        Connecting...
-                    </span>
-
-                    <span class="small-muted ms-2">
-                        Last update:
-                        <span id="last-update">-</span>
-                    </span>
-                </div>
-            </div>
-
-            <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-primary" id="refresh-btn" onclick="refreshAll()">
-                    🔄 Refresh
-                </button>
-
-                <button class="btn btn-outline-danger" onclick="stopAgent()">
-                    🛑 Stop Agent
-                </button>
-            </div>
-
-        </div>
-    </div>
-
-    <!-- AGENT LAUNCHER -->
-    <div id="agent-launcher-banner"
-         class="card card-custom p-4 bg-white border-warning"
-         style="display:none;">
-
-        <div class="d-flex align-items-center mb-2">
-            <span class="fs-3 me-2">⚠️</span>
-            <h5 class="fw-bold m-0">
-                Local Agent ยังไม่ได้ทำงาน
-            </h5>
-        </div>
-
-        <p class="text-muted small">
-            เปิด PowerShell แบบ <b>Run as Administrator</b>
-            แล้วคัดลอกคำสั่งด้านล่างไปวางบนเครื่องหน้างาน
-        </p>
-
-        <div class="launcher-box d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-            <span id="cmd-text">
-                iwr -useb https://itchula001.github.io/diagnostic/Start-Agent.ps1 | iex
+        <div class="d-flex align-items-center gap-3 text-white">
+            <span id="agentStatus">
+                <span class="status-dot offline"></span>Agent Offline
             </span>
 
-            <button class="btn btn-success fw-bold flex-shrink-0"
-                    onclick="copyLauncher()">
-                📋 Copy Command
+            <button class="btn btn-outline-light btn-sm" onclick="refreshAll()">
+                ↻ Refresh
+            </button>
+
+            <button class="btn btn-danger btn-sm" onclick="stopAgent()">
+                Stop Agent
             </button>
         </div>
+    </div>
+</nav>
 
-        <small class="text-muted d-block mt-2">
-            หลัง Agent ทำงาน หน้าเว็บจะเชื่อมต่ออัตโนมัติ
-        </small>
+<div class="container-fluid py-4">
+
+    <!-- Launcher -->
+    <div id="launcherCard" class="card mb-4">
+        <div class="card-body">
+            <h5>Local Agent</h5>
+            <p class="text-muted mb-2">
+                Start the Windows diagnostic agent if it is not running.
+            </p>
+
+            <div class="input-group">
+                <input
+                    id="launcherCommand"
+                    class="form-control mono"
+                    readonly
+                    value="iwr -useb https://itchula001.github.io/diagnostic/Start-Agent.ps1 | iex"
+                >
+                <button class="btn btn-primary" onclick="copyLauncher()">
+                    Copy Command
+                </button>
+            </div>
+        </div>
     </div>
 
-    <!-- SYSTEM METRICS -->
-    <div class="row">
+    <!-- SYSTEM HEADER -->
+    <div id="systemCard" class="card mb-4 d-none">
+        <div class="card-body">
+            <div class="row align-items-center">
 
-        <div class="col-md-4">
-            <div class="card card-custom metric-card p-4 bg-white">
-                <div class="d-flex justify-content-between">
-                    <span class="text-muted">CPU Usage</span>
-                    <span>⚙️</span>
-                </div>
-
-                <div class="metric-value mt-2" id="cpu-val">- %</div>
-
-                <div class="progress mt-3" style="height:6px;">
-                    <div id="cpu-progress"
-                         class="progress-bar"
-                         style="width:0%">
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card card-custom metric-card p-4 bg-white">
-                <div class="d-flex justify-content-between">
-                    <span class="text-muted">RAM Usage</span>
-                    <span>🧠</span>
-                </div>
-
-                <div class="metric-value mt-2" id="ram-val">- %</div>
-
-                <div class="progress mt-3" style="height:6px;">
-                    <div id="ram-progress"
-                         class="progress-bar"
-                         style="width:0%">
+                <div class="col-lg-7">
+                    <h3 id="computerName">-</h3>
+                    <div id="windowsInfo" class="text-muted">-</div>
+                    <div class="mt-2">
+                        <span class="badge badge-soft me-1">
+                            IP: <span id="primaryIp">-</span>
+                        </span>
+                        <span class="badge badge-soft me-1">
+                            Uptime: <span id="uptime">-</span>
+                        </span>
+                        <span class="badge badge-soft">
+                            Agent: <span id="agentAdmin">-</span>
+                        </span>
                     </div>
                 </div>
 
-                <small class="text-muted d-block mt-2" id="ram-free">
-                    Free: - GB
-                </small>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card card-custom metric-card p-4 bg-white">
-                <div class="d-flex justify-content-between">
-                    <span class="text-muted">Disk C: Usage</span>
-                    <span>💾</span>
-                </div>
-
-                <div class="metric-value mt-2" id="disk-val">- %</div>
-
-                <div class="progress mt-3" style="height:6px;">
-                    <div id="disk-progress"
-                         class="progress-bar"
-                         style="width:0%">
-                    </div>
-                </div>
-
-                <small class="text-muted d-block mt-2" id="disk-free">
-                    Free: - GB
-                </small>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- NAVIGATION -->
-    <ul class="nav nav-pills mb-3 gap-2">
-
-        <li class="nav-item">
-            <button class="nav-link active"
-                    data-bs-toggle="pill"
-                    data-bs-target="#content-diag">
-                🔍 Diagnostic
-            </button>
-        </li>
-
-        <li class="nav-item">
-            <button class="nav-link"
-                    data-bs-toggle="pill"
-                    data-bs-target="#content-proc"
-                    onclick="loadProcesses()">
-                ⚡ Processes
-            </button>
-        </li>
-
-        <li class="nav-item">
-            <button class="nav-link"
-                    data-bs-toggle="pill"
-                    data-bs-target="#content-hist"
-                    onclick="loadHistory()">
-                📜 History
-            </button>
-        </li>
-
-    </ul>
-
-    <div class="tab-content">
-
-        <!-- DIAGNOSTIC -->
-        <div class="tab-pane fade show active" id="content-diag">
-
-            <div class="card card-custom p-4 bg-white">
-
-                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
-
-                    <div>
-                        <h5 class="fw-bold m-0">
-                            System Diagnostic Status
-                        </h5>
-
-                        <small class="text-muted">
-                            ตรวจสอบสถานะ Windows และ Network
-                        </small>
-                    </div>
-
-                    <button class="btn btn-success"
-                            onclick="runDiagnose()">
-                        ▶ Run Diagnostic
-                    </button>
-
-                </div>
-
-                <div id="diag-container">
-                    <div class="empty-state">
-                        <div class="fs-1">🔎</div>
-                        <div class="mt-2">
-                            กด Run Diagnostic เพื่อเริ่มตรวจสอบ
+                <div class="col-lg-5 text-center">
+                    <div class="health-ring">
+                        <div>
+                            <div id="healthScore" class="health-score">--</div>
+                            <div class="small-muted">Health</div>
                         </div>
                     </div>
                 </div>
 
             </div>
         </div>
+    </div>
 
-        <!-- PROCESS -->
-        <div class="tab-pane fade" id="content-proc">
+    <!-- METRICS -->
+    <div class="row g-3 mb-4">
 
-            <div class="card card-custom p-4 bg-white">
-
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div>
-                        <h5 class="fw-bold m-0">
-                            Top Resource Consumption
-                        </h5>
-
-                        <small class="text-muted">
-                            Process ที่ใช้ CPU / RAM สูงสุด
-                        </small>
-                    </div>
-
-                    <button class="btn btn-sm btn-outline-primary"
-                            onclick="loadProcesses()">
-                        🔄
-                    </button>
+        <div class="col-md-3">
+            <div class="card metric-card">
+                <div class="card-body">
+                    <div class="metric-label">CPU</div>
+                    <div id="cpuValue" class="metric-value">--%</div>
+                    <div id="cpuDetail" class="small-muted">Waiting...</div>
                 </div>
-
-                <div class="row">
-
-                    <div class="col-lg-6 mb-3 mb-lg-0">
-                        <h6 class="fw-bold mb-3">
-                            ⚙️ Top CPU
-                        </h6>
-
-                        <ul class="list-group"
-                            id="cpu-process-list">
-                        </ul>
-                    </div>
-
-                    <div class="col-lg-6">
-                        <h6 class="fw-bold mb-3">
-                            🧠 Top RAM
-                        </h6>
-
-                        <ul class="list-group"
-                            id="ram-process-list">
-                        </ul>
-                    </div>
-
-                </div>
-
             </div>
         </div>
 
-        <!-- HISTORY -->
-        <div class="tab-pane fade" id="content-hist">
-
-            <div class="card card-custom p-4 bg-white">
-
-                <div class="d-flex justify-content-between align-items-center mb-3">
-
-                    <div>
-                        <h5 class="fw-bold m-0">
-                            Remediation History
-                        </h5>
-
-                        <small class="text-muted">
-                            ประวัติการแก้ไขล่าสุด
-                        </small>
-                    </div>
-
-                    <button class="btn btn-sm btn-outline-primary"
-                            onclick="loadHistory()">
-                        🔄 Refresh
-                    </button>
-
+        <div class="col-md-3">
+            <div class="card metric-card">
+                <div class="card-body">
+                    <div class="metric-label">Memory</div>
+                    <div id="ramValue" class="metric-value">--%</div>
+                    <div id="ramDetail" class="small-muted">Waiting...</div>
                 </div>
+            </div>
+        </div>
 
-                <div class="table-responsive">
-
-                    <table class="table table-hover align-middle mb-0">
-
-                        <thead class="table-light">
-                        <tr>
-                            <th>Timestamp</th>
-                            <th>Computer</th>
-                            <th>Problem</th>
-                            <th>Action</th>
-                            <th>Result</th>
-                        </tr>
-                        </thead>
-
-                        <tbody id="history-table-body">
-                        </tbody>
-
-                    </table>
-
+        <div class="col-md-3">
+            <div class="card metric-card">
+                <div class="card-body">
+                    <div class="metric-label">Disk C:</div>
+                    <div id="diskValue" class="metric-value">--%</div>
+                    <div id="diskDetail" class="small-muted">Waiting...</div>
                 </div>
+            </div>
+        </div>
 
+        <div class="col-md-3">
+            <div class="card metric-card">
+                <div class="card-body">
+                    <div class="metric-label">Network</div>
+                    <div id="networkValue" class="metric-value">--</div>
+                    <div id="networkDetail" class="small-muted">Waiting...</div>
+                </div>
             </div>
         </div>
 
     </div>
+
+    <!-- NETWORK + SERVICES -->
+    <div class="row g-3 mb-4">
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5>🌐 Network Path</h5>
+
+                    <div class="check-row d-flex justify-content-between">
+                        <span>Adapter</span>
+                        <span id="netAdapter">--</span>
+                    </div>
+
+                    <div class="check-row d-flex justify-content-between">
+                        <span>Gateway</span>
+                        <span id="netGateway">--</span>
+                    </div>
+
+                    <div class="check-row d-flex justify-content-between">
+                        <span>Gateway Ping</span>
+                        <span id="netGatewayPing">--</span>
+                    </div>
+
+                    <div class="check-row d-flex justify-content-between">
+                        <span>DNS</span>
+                        <span id="netDns">--</span>
+                    </div>
+
+                    <div class="check-row d-flex justify-content-between">
+                        <span>Internet</span>
+                        <span id="netInternet">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5>⚙ Important Services</h5>
+                    <div id="servicesSummary">
+                        Loading...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- TABS -->
+    <div class="card">
+        <div class="card-body">
+
+            <ul class="nav nav-tabs" role="tablist">
+
+                <li class="nav-item">
+                    <button class="nav-link active"
+                            data-bs-toggle="tab"
+                            data-bs-target="#diagnosticTab">
+                        🔍 Diagnostic
+                    </button>
+                </li>
+
+                <li class="nav-item">
+                    <button class="nav-link"
+                            data-bs-toggle="tab"
+                            data-bs-target="#processTab">
+                        🧠 Processes
+                    </button>
+                </li>
+
+                <li class="nav-item">
+                    <button class="nav-link"
+                            data-bs-toggle="tab"
+                            data-bs-target="#eventTab">
+                        📋 Events
+                    </button>
+                </li>
+
+                <li class="nav-item">
+                    <button class="nav-link"
+                            data-bs-toggle="tab"
+                            data-bs-target="#historyTab">
+                        🕘 History
+                    </button>
+                </li>
+
+            </ul>
+
+            <div class="tab-content">
+
+                <!-- DIAGNOSTIC -->
+                <div class="tab-pane fade show active" id="diagnosticTab">
+
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h5 class="mb-0">System Diagnostic</h5>
+                            <small class="text-muted">
+                                Checks CPU, RAM, Disk, Network, Services, Defender and Windows Update
+                            </small>
+                        </div>
+
+                        <button class="btn btn-primary"
+                                onclick="runDiagnostic()">
+                            Run Full Diagnostic
+                        </button>
+                    </div>
+
+                    <div id="diagnosticSummary" class="mb-3"></div>
+                    <div id="diagnosticResults"></div>
+
+                </div>
+
+                <!-- PROCESS -->
+                <div class="tab-pane fade" id="processTab">
+
+                    <div class="row mb-3">
+
+                        <div class="col-md-5">
+                            <input id="processSearch"
+                                   class="form-control"
+                                   placeholder="Search process / PID / path..."
+                                   oninput="filterProcesses()">
+                        </div>
+
+                        <div class="col-md-3">
+                            <select id="processSort"
+                                    class="form-select"
+                                    onchange="renderProcesses()">
+                                <option value="cpu">Sort: CPU</option>
+                                <option value="ram">Sort: RAM</option>
+                                <option value="name">Sort: Name</option>
+                                <option value="pid">Sort: PID</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-4 text-end">
+                            <button class="btn btn-outline-primary"
+                                    onclick="loadProcesses()">
+                                Refresh Processes
+                            </button>
+                        </div>
+
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover process-table">
+                            <thead>
+                            <tr>
+                                <th>Process</th>
+                                <th>PID</th>
+                                <th>CPU</th>
+                                <th>RAM</th>
+                                <th>User</th>
+                                <th>Protected</th>
+                                <th>Action</th>
+                            </tr>
+                            </thead>
+                            <tbody id="processTable">
+                            <tr>
+                                <td colspan="7" class="text-center">
+                                    No data
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+
+                <!-- EVENTS -->
+                <div class="tab-pane fade" id="eventTab">
+
+                    <div class="d-flex justify-content-between mb-3">
+                        <div>
+                            <h5>Windows Event Errors</h5>
+                            <small class="text-muted">
+                                Recent Critical / Error events
+                            </small>
+                        </div>
+
+                        <button class="btn btn-outline-primary"
+                                onclick="loadEvents()">
+                            Refresh Events
+                        </button>
+                    </div>
+
+                    <div id="eventResults"></div>
+
+                </div>
+
+                <!-- HISTORY -->
+                <div class="tab-pane fade" id="historyTab">
+
+                    <div class="d-flex justify-content-between mb-3">
+
+                        <div>
+                            <h5>Diagnostic History</h5>
+                            <small class="text-muted">
+                                Actions, evidence and verification
+                            </small>
+                        </div>
+
+                        <button class="btn btn-success"
+                                onclick="exportHistory()">
+                            Export CSV
+                        </button>
+
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Machine</th>
+                                <th>Problem</th>
+                                <th>Action</th>
+                                <th>Before</th>
+                                <th>After</th>
+                                <th>Result</th>
+                            </tr>
+                            </thead>
+
+                            <tbody id="historyTable">
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
 </div>
 
-<!-- VERIFICATION MODAL -->
-<div class="modal fade"
-     id="verificationModal"
-     tabindex="-1"
-     aria-hidden="true">
-
-    <div class="modal-dialog modal-dialog-centered">
-
+<!-- FIX MODAL -->
+<div class="modal fade" id="fixModal" tabindex="-1">
+    <div class="modal-dialog">
         <div class="modal-content">
 
             <div class="modal-header">
-                <h5 class="modal-title fw-bold">
-                    🛠 Verification Result
-                </h5>
-
-                <button type="button"
-                        class="btn-close"
-                        data-bs-dismiss="modal">
-                </button>
+                <h5 class="modal-title">Fix Center</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
             </div>
 
             <div class="modal-body">
 
-                <div class="text-center mb-3"
-                     id="verdict-badge">
+                <div class="alert alert-warning">
+                    The agent will execute a predefined Windows repair action.
                 </div>
 
-                <div class="card bg-light border-0 p-3 mb-2">
-                    <small class="text-danger fw-bold">
-                        🔴 BEFORE
-                    </small>
-
-                    <div id="v-before-desc"
-                         class="small mt-1">
-                    </div>
+                <div>
+                    <strong>Problem</strong>
+                    <div id="fixProblem" class="mb-3"></div>
                 </div>
 
-                <div class="card bg-light border-0 p-3 mb-2">
-                    <small class="text-primary fw-bold">
-                        ⚡ ACTION TAKEN
-                    </small>
-
-                    <div id="v-action-desc"
-                         class="small mt-1 font-monospace">
-                    </div>
+                <div>
+                    <strong>Evidence</strong>
+                    <div id="fixEvidence" class="mb-3"></div>
                 </div>
 
-                <div class="card bg-light border-0 p-3">
-                    <small class="text-success fw-bold">
-                        🟢 AFTER
-                    </small>
-
-                    <div id="v-after-desc"
-                         class="small mt-1">
-                    </div>
+                <div>
+                    <strong>Action</strong>
+                    <div id="fixAction" class="mb-3"></div>
                 </div>
+
+                <div id="fixProgress" class="d-none">
+                    <div class="spinner-border spinner-border-sm"></div>
+                    Running repair and verification...
+                </div>
+
+                <div id="fixResult" class="mt-3"></div>
 
             </div>
 
             <div class="modal-footer">
-                <button type="button"
-                        class="btn btn-secondary btn-sm"
+                <button class="btn btn-secondary"
                         data-bs-dismiss="modal">
-                    Close
+                    Cancel
+                </button>
+
+                <button id="confirmFixBtn"
+                        class="btn btn-danger"
+                        onclick="executeFix()">
+                    Execute Fix
                 </button>
             </div>
 
@@ -487,768 +560,956 @@
     </div>
 </div>
 
-<!-- TOAST -->
-<div class="toast-container position-fixed bottom-0 end-0 p-3">
-
-    <div id="appToast"
-         class="toast"
-         role="alert">
-
-        <div class="toast-header">
-            <strong class="me-auto">
-                IT Diagnostic
-            </strong>
-
-            <button type="button"
-                    class="btn-close"
-                    data-bs-dismiss="toast">
-            </button>
-        </div>
-
-        <div class="toast-body"
-             id="toast-message">
-        </div>
-
-    </div>
-
-</div>
+<div id="toastContainer"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
 
-const LOCAL_AGENT_URL = "http://127.0.0.1:8765";
+const API = "http://127.0.0.1:8765";
 
-let isRefreshing = false;
+let currentFix = null;
+let processes = [];
+let historyData = [];
 
 function escapeHtml(value) {
-
-    return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+    if (value === null || value === undefined) return "";
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
 }
 
-function showToast(message) {
+async function api(path, options = {}, timeout = 10000) {
 
-    document.getElementById("toast-message").innerText = message;
-
-    const toastEl = document.getElementById("appToast");
-
-    bootstrap.Toast.getOrCreateInstance(toastEl, {
-        delay: 3000
-    }).show();
-}
-
-function setAgentOnline() {
-
-    const status = document.getElementById("agent-status");
-
-    status.className = "badge bg-success";
-    status.innerHTML = '<span class="status-dot"></span> Online (Local)';
-
-    document.getElementById("agent-launcher-banner").style.display = "none";
-
-    document.getElementById("last-update").innerText =
-        new Date().toLocaleTimeString("th-TH");
-}
-
-function setAgentOffline() {
-
-    const status = document.getElementById("agent-status");
-
-    status.className = "badge bg-danger";
-    status.innerHTML = '<span class="status-dot"></span> Offline';
-
-    document.getElementById("agent-launcher-banner").style.display = "block";
-}
-
-async function fetchAPI(endpoint, options = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
 
     try {
 
-        const controller = new AbortController();
-
-        const timeout = setTimeout(() => {
-            controller.abort();
-        }, 10000);
-
-        const response = await fetch(
-            `${LOCAL_AGENT_URL}${endpoint}`,
-            {
-                ...options,
-                signal: controller.signal
-            }
-        );
-
-        clearTimeout(timeout);
+        const response = await fetch(API + path, {
+            ...options,
+            signal: controller.signal
+        });
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            throw new Error("HTTP " + response.status);
         }
 
-        const data = await response.json();
+        const text = await response.text();
 
-        setAgentOnline();
+        if (!text) return {};
 
-        return data;
+        try {
+            return JSON.parse(text);
+        } catch {
+            return text;
+        }
 
-    } catch (error) {
-
-        setAgentOffline();
-
-        return null;
+    } finally {
+        clearTimeout(timer);
     }
 }
 
-async function copyLauncher() {
+function toast(message, type = "primary") {
 
-    const cmd = document.getElementById("cmd-text").innerText;
+    const id = "toast-" + Date.now();
 
-    try {
-
-        await navigator.clipboard.writeText(cmd);
-
-        showToast("คัดลอกคำสั่งเรียบร้อยแล้ว");
-
-    } catch {
-
-        const textarea = document.createElement("textarea");
-
-        textarea.value = cmd;
-        document.body.appendChild(textarea);
-
-        textarea.select();
-        document.execCommand("copy");
-
-        textarea.remove();
-
-        showToast("คัดลอกคำสั่งเรียบร้อยแล้ว");
-    }
-}
-
-function setProgress(id, value) {
-
-    const el = document.getElementById(id);
-
-    value = Math.max(0, Math.min(100, Number(value) || 0));
-
-    el.style.width = `${value}%`;
-}
-
-async function loadMetrics() {
-
-    const data = await fetchAPI("/metrics");
-
-    if (!data) return;
-
-    const cpu = Number(data.cpu) || 0;
-    const ram = Number(data.ram) || 0;
-    const disk = Number(data.disk) || 0;
-
-    document.getElementById("cpu-val").innerText = `${cpu}%`;
-    document.getElementById("ram-val").innerText = `${ram}%`;
-    document.getElementById("disk-val").innerText = `${disk}%`;
-
-    document.getElementById("ram-free").innerText =
-        `Free: ${data.ramFreeGB ?? "-"} GB`;
-
-    document.getElementById("disk-free").innerText =
-        `Free: ${data.diskFreeGB ?? "-"} GB`;
-
-    setProgress("cpu-progress", cpu);
-    setProgress("ram-progress", ram);
-    setProgress("disk-progress", disk);
-}
-
-function severityClass(severity) {
-
-    if (severity === "critical") {
-        return "severity-critical";
-    }
-
-    if (severity === "warning") {
-        return "severity-warning";
-    }
-
-    return "severity-info";
-}
-
-function severityBadge(severity) {
-
-    if (severity === "critical") {
-        return "bg-danger";
-    }
-
-    if (severity === "warning") {
-        return "bg-warning text-dark";
-    }
-
-    return "bg-primary";
-}
-
-async function runDiagnose() {
-
-    const container = document.getElementById("diag-container");
-
-    container.innerHTML = `
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary"></div>
-            <div class="mt-3 text-muted">
-                Analyzing system health...
+    const html = `
+        <div id="${id}" class="toast align-items-center text-bg-${type} border-0 mb-2"
+             role="alert">
+            <div class="d-flex">
+                <div class="toast-body">${escapeHtml(message)}</div>
+                <button type="button"
+                        class="btn-close btn-close-white me-2 m-auto"
+                        data-bs-dismiss="toast"></button>
             </div>
         </div>
     `;
 
-    const data = await fetchAPI("/diagnose");
-
-    if (!data) {
-
-        container.innerHTML = `
-            <div class="alert alert-danger">
-                ❌ ไม่สามารถเชื่อมต่อ Local Agent ได้
-            </div>
-        `;
-
-        return;
-    }
-
-    const problems = Array.isArray(data.problems)
-        ? data.problems
-        : [];
-
-    if (problems.length === 0) {
-
-        container.innerHTML = `
-            <div class="alert alert-success d-flex align-items-center m-0">
-                <span class="fs-3 me-3">🟢</span>
-
-                <div>
-                    <h6 class="fw-bold mb-1">
-                        System Healthy
-                    </h6>
-
-                    <small>
-                        ไม่พบปัญหาตามรายการตรวจสอบของ Agent
-                    </small>
-                </div>
-            </div>
-        `;
-
-        return;
-    }
-
-    container.innerHTML = problems.map(problem => {
-
-        const evidence = Array.isArray(problem.evidence)
-            ? problem.evidence
-            : [];
-
-        const evidenceHtml = evidence.length
-            ? evidence.map(item =>
-                `<li>${escapeHtml(item)}</li>`
-              ).join("")
-            : "<li>No evidence supplied</li>";
-
-        const action = problem.recommendedFix || "";
-
-        const fixButton = action
-            ? `
-                <button
-                    class="btn btn-sm btn-danger fw-bold"
-                    onclick="executeFix(
-                        ${JSON.stringify(action)},
-                        ${JSON.stringify(problem.title || "")},
-                        ${JSON.stringify(problem.id || "")},
-                        ${JSON.stringify(evidence.join(", "))}
-                    )">
-                    🔧 Execute Fix
-                </button>
-              `
-            : `
-                <span class="text-muted small">
-                    Manual investigation required
-                </span>
-              `;
-
-        return `
-            <div class="card card-custom p-3 ${severityClass(problem.severity)}">
-
-                <div class="d-flex justify-content-between align-items-start gap-3">
-
-                    <div>
-                        <h6 class="fw-bold text-dark mb-1">
-                            ${escapeHtml(problem.title)}
-                        </h6>
-
-                        <p class="text-muted small mb-2">
-                            ${escapeHtml(problem.description)}
-                        </p>
-                    </div>
-
-                    <span class="badge ${severityBadge(problem.severity)}">
-                        ${escapeHtml(String(problem.severity || "INFO").toUpperCase())}
-                    </span>
-
-                </div>
-
-                <div class="small text-muted mt-2">
-
-                    <strong>Evidence:</strong>
-
-                    <ul class="mb-2 ps-3">
-                        ${evidenceHtml}
-                    </ul>
-
-                </div>
-
-                <div class="border-top pt-2 mt-2 text-end">
-                    ${fixButton}
-                </div>
-
-            </div>
-        `;
-
-    }).join("");
-}
-
-async function executeFix(action, title, problemId, evidence) {
-
-    const confirmed = confirm(
-        `Execute "${action}"?\n\nProblem: ${title}`
+    document.getElementById("toastContainer").insertAdjacentHTML(
+        "beforeend",
+        html
     );
 
-    if (!confirmed) return;
+    const el = document.getElementById(id);
+    const t = new bootstrap.Toast(el, {delay: 3500});
+    t.show();
 
-    const result = await fetchAPI("/fix", {
-
-        method: "POST",
-
-        headers: {
-            "Content-Type": "application/json"
-        },
-
-        body: JSON.stringify({
-            action,
-            title,
-            verificationStatus: "PENDING"
-        })
-
-    });
-
-    if (!result || !result.success) {
-
-        showToast(
-            `Execution failed: ${
-                result?.message || "Unknown error"
-            }`
-        );
-
-        return;
-    }
-
-    showToast(result.message || "Action executed");
-
-    await new Promise(resolve => setTimeout(resolve, 700));
-
-    const afterDiag = await fetchAPI("/diagnose");
-
-    const problemStillExists =
-        Array.isArray(afterDiag?.problems) &&
-        afterDiag.problems.some(
-            item => item.id === problemId
-        );
-
-    const verified =
-        !problemStillExists;
-
-    const verificationStatus =
-        verified
-            ? "VERIFIED_SUCCESS"
-            : "VERIFIED_FAILED";
-
-    await fetchAPI("/fix", {
-
-        method: "POST",
-
-        headers: {
-            "Content-Type": "application/json"
-        },
-
-        body: JSON.stringify({
-            action,
-            title,
-            verificationStatus
-        })
-
-    });
-
-    showVerificationModal(
-        {
-            title,
-            evidence
-        },
-        action,
-        verified
-    );
-
-    await refreshAll(false);
+    el.addEventListener("hidden.bs.toast", () => el.remove());
 }
 
-function showVerificationModal(before, action, success) {
+function formatBytes(bytes) {
 
-    document.getElementById("v-before-desc").innerText =
-        `${before.title} [${before.evidence}]`;
+    if (bytes === null || bytes === undefined) return "-";
 
-    document.getElementById("v-action-desc").innerText =
-        `Executed: ${action}`;
+    const units = ["B", "KB", "MB", "GB", "TB"];
 
-    const badge = document.getElementById("verdict-badge");
-    const after = document.getElementById("v-after-desc");
+    let i = 0;
+    let n = Number(bytes);
 
-    if (success) {
+    while (n >= 1024 && i < units.length - 1) {
+        n /= 1024;
+        i++;
+    }
 
-        badge.innerHTML =
-            '<span class="badge bg-success fs-6 p-2">✅ VERIFICATION: SUCCESS</span>';
+    return n.toFixed(i === 0 ? 0 : 1) + " " + units[i];
+}
 
-        after.innerHTML =
-            '<span class="text-success fw-bold">Problem resolved and verified by re-diagnosis.</span>';
+function formatDuration(seconds) {
+
+    seconds = Number(seconds || 0);
+
+    const d = Math.floor(seconds / 86400);
+    seconds %= 86400;
+
+    const h = Math.floor(seconds / 3600);
+    seconds %= 3600;
+
+    const m = Math.floor(seconds / 60);
+
+    return `${d}d ${h}h ${m}m`;
+}
+
+function setAgentOnline(online) {
+
+    const el = document.getElementById("agentStatus");
+
+    if (online) {
+
+        el.innerHTML =
+            `<span class="status-dot online"></span>Agent Online`;
+
+        document.getElementById("launcherCard").classList.add("d-none");
 
     } else {
 
-        badge.innerHTML =
-            '<span class="badge bg-danger fs-6 p-2">❌ VERIFICATION: FAILED</span>';
+        el.innerHTML =
+            `<span class="status-dot offline"></span>Agent Offline`;
 
-        after.innerHTML =
-            '<span class="text-danger fw-bold">Problem still exists after remediation attempt.</span>';
+        document.getElementById("launcherCard").classList.remove("d-none");
     }
-
-    bootstrap.Modal
-        .getOrCreateInstance(
-            document.getElementById("verificationModal")
-        )
-        .show();
 }
 
-function processListHtml(items) {
+async function checkAgent() {
 
-    if (!Array.isArray(items) || items.length === 0) {
+    try {
 
-        return `
-            <li class="list-group-item text-muted text-center py-4">
-                No process data
-            </li>
-        `;
+        const data = await api("/system");
+
+        setAgentOnline(true);
+
+        document.getElementById("systemCard").classList.remove("d-none");
+
+        renderSystem(data);
+
+        return true;
+
+    } catch (e) {
+
+        setAgentOnline(false);
+
+        return false;
     }
+}
 
-    return items.map(process => {
+function renderSystem(data) {
 
-        const name = escapeHtml(process.Name);
-        const pid = Number(process.Id) || 0;
+    document.getElementById("computerName").textContent =
+        data.ComputerName || "-";
 
-        const cpu = Number(process.CPU_Time) || 0;
-        const ram = Number(process.RAM_MB) || 0;
+    document.getElementById("windowsInfo").textContent =
+        `${data.OSCaption || ""} ${data.OSVersion || ""} (Build ${data.BuildNumber || "-"})`;
 
-        const isSystem = Boolean(process.IsSystem);
+    document.getElementById("primaryIp").textContent =
+        data.PrimaryIP || "-";
 
-        const action = isSystem
-            ? `<span class="badge bg-secondary">Protected</span>`
-            : `
-                <button
-                    class="btn btn-sm btn-outline-danger"
-                    onclick="killProcess(
-                        ${pid},
-                        ${JSON.stringify(String(process.Name || ""))}
-                    )">
-                    Kill
-                </button>
-              `;
+    document.getElementById("uptime").textContent =
+        formatDuration(data.UptimeSeconds);
 
-        return `
-            <li class="list-group-item process-item d-flex justify-content-between align-items-center gap-3">
+    document.getElementById("agentAdmin").textContent =
+        data.IsAdmin ? "Administrator" : "Standard User";
+}
 
-                <div class="overflow-hidden">
+async function loadMetrics() {
 
-                    <strong>${name}</strong>
+    try {
 
-                    <small class="text-muted">
-                        PID: ${pid}
-                    </small>
+        const d = await api("/metrics");
 
-                    <br>
+        const cpu = Number(d.CPU || 0);
+        const ram = Number(d.RAMPercent || 0);
+        const disk = Number(d.DiskPercent || 0);
 
-                    <small class="text-muted">
-                        CPU: ${cpu}s
-                        &nbsp;|&nbsp;
-                        RAM: ${ram} MB
-                    </small>
+        document.getElementById("cpuValue").textContent =
+            cpu.toFixed(0) + "%";
 
+        document.getElementById("cpuDetail").textContent =
+            `${d.CPUName || "Processor"}`;
+
+        document.getElementById("ramValue").textContent =
+            ram.toFixed(0) + "%";
+
+        document.getElementById("ramDetail").textContent =
+            `${formatBytes(d.RAMUsed)} / ${formatBytes(d.RAMTotal)}`;
+
+        document.getElementById("diskValue").textContent =
+            disk.toFixed(0) + "%";
+
+        document.getElementById("diskDetail").textContent =
+            `${formatBytes(d.DiskUsed)} / ${formatBytes(d.DiskTotal)}`;
+
+        calculateHealth(cpu, ram, disk);
+
+    } catch (e) {
+
+        setAgentOnline(false);
+    }
+}
+
+function calculateHealth(cpu, ram, disk) {
+
+    let score = 100;
+
+    if (cpu >= 90) score -= 30;
+    else if (cpu >= 75) score -= 15;
+
+    if (ram >= 90) score -= 25;
+    else if (ram >= 80) score -= 10;
+
+    if (disk >= 95) score -= 30;
+    else if (disk >= 85) score -= 15;
+
+    score = Math.max(0, score);
+
+    document.getElementById("healthScore").textContent = score;
+
+    document.getElementById("healthScore").className =
+        "health-score " +
+        (score >= 80 ? "text-success" :
+         score >= 60 ? "text-warning" :
+         "text-danger");
+}
+
+async function loadNetwork() {
+
+    try {
+
+        const d = await api("/network");
+
+        document.getElementById("netAdapter").innerHTML =
+            d.AdapterOK
+                ? `<span class="text-success">✓ ${escapeHtml(d.AdapterName || "Connected")}</span>`
+                : `<span class="text-danger">✕ No active adapter</span>`;
+
+        document.getElementById("netGateway").innerHTML =
+            d.Gateway
+                ? `<span class="text-success">✓ ${escapeHtml(d.Gateway)}</span>`
+                : `<span class="text-danger">✕ None</span>`;
+
+        document.getElementById("netGatewayPing").innerHTML =
+            d.GatewayPingOK
+                ? `<span class="text-success">✓ ${d.GatewayLatencyMs || "-"} ms</span>`
+                : `<span class="text-danger">✕ Failed</span>`;
+
+        document.getElementById("netDns").innerHTML =
+            d.DNSOK
+                ? `<span class="text-success">✓ ${escapeHtml(d.DNSAddress || "OK")}</span>`
+                : `<span class="text-danger">✕ Failed</span>`;
+
+        document.getElementById("netInternet").innerHTML =
+            d.InternetOK
+                ? `<span class="text-success">✓ Online ${d.InternetLatencyMs ? "(" + d.InternetLatencyMs + " ms)" : ""}</span>`
+                : `<span class="text-danger">✕ Offline</span>`;
+
+        document.getElementById("networkValue").textContent =
+            d.InternetOK ? "ONLINE" : "OFFLINE";
+
+        document.getElementById("networkDetail").textContent =
+            d.InternetOK
+                ? `Gateway ${d.GatewayPingOK ? "OK" : "FAIL"} / DNS ${d.DNSOK ? "OK" : "FAIL"}`
+                : "Internet connection failed";
+
+    } catch (e) {
+
+        document.getElementById("networkValue").textContent = "ERROR";
+    }
+}
+
+async function loadServices() {
+
+    try {
+
+        const d = await api("/services");
+
+        const list = d.Services || [];
+
+        if (!list.length) {
+            document.getElementById("servicesSummary").innerHTML =
+                `<span class="text-muted">No service data</span>`;
+            return;
+        }
+
+        document.getElementById("servicesSummary").innerHTML =
+            list.map(s => {
+
+                const ok =
+                    String(s.Status).toLowerCase() === "running";
+
+                return `
+                    <div class="check-row d-flex justify-content-between">
+                        <span>
+                            ${escapeHtml(s.DisplayName || s.Name)}
+                            <div class="small-muted">${escapeHtml(s.Name)}</div>
+                        </span>
+
+                        <span class="${ok ? "text-success" : "text-danger"}">
+                            ${ok ? "● Running" : "● " + escapeHtml(s.Status)}
+                        </span>
+                    </div>
+                `;
+
+            }).join("");
+
+    } catch (e) {
+
+        document.getElementById("servicesSummary").innerHTML =
+            `<span class="text-danger">Unable to read services</span>`;
+    }
+}
+
+async function runDiagnostic() {
+
+    const result = document.getElementById("diagnosticResults");
+
+    result.innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border"></div>
+            <div class="mt-2">Running full diagnostic...</div>
+        </div>
+    `;
+
+    try {
+
+        const d = await api("/diagnose", {}, 30000);
+
+        const checks = d.Checks || [];
+        const problems = checks.filter(x => x.Status === "Problem");
+
+        document.getElementById("diagnosticSummary").innerHTML = `
+            <div class="alert ${problems.length ? "alert-danger" : "alert-success"}">
+                <strong>
+                    ${problems.length
+                        ? problems.length + " problem(s) detected"
+                        : "System looks healthy"}
+                </strong>
+
+                <span class="float-end">
+                    ${d.DurationMs || 0} ms
+                </span>
+            </div>
+        `;
+
+        if (!checks.length) {
+            result.innerHTML =
+                `<div class="alert alert-warning">No diagnostic results.</div>`;
+            return;
+        }
+
+        result.innerHTML = checks.map(check => {
+
+            const isProblem = check.Status === "Problem";
+            const isWarning = check.Status === "Warning";
+
+            const cls =
+                isProblem ? "problem-card" :
+                isWarning ? "info-card" :
+                "ok-card";
+
+            const badge =
+                isProblem
+                    ? `<span class="badge bg-danger">PROBLEM</span>`
+                    : isWarning
+                        ? `<span class="badge bg-warning text-dark">WARNING</span>`
+                        : `<span class="badge bg-success">OK</span>`;
+
+            const fixButton =
+                isProblem && check.FixAction
+                    ? `
+                        <button class="btn btn-sm btn-danger"
+                                onclick='openFix(${JSON.stringify(check)})'>
+                            Fix
+                        </button>
+                    `
+                    : "";
+
+            return `
+                <div class="card mb-3 ${cls}">
+                    <div class="card-body">
+
+                        <div class="d-flex justify-content-between">
+                            <h6>${escapeHtml(check.Title)}</h6>
+                            ${badge}
+                        </div>
+
+                        <p class="mb-2">
+                            ${escapeHtml(check.Message || "")}
+                        </p>
+
+                        <div class="small-muted">
+                            <strong>Evidence:</strong>
+                            ${escapeHtml(check.Evidence || "-")}
+                        </div>
+
+                        <div class="small-muted mt-1">
+                            <strong>Check time:</strong>
+                            ${check.DurationMs || 0} ms
+                        </div>
+
+                        ${fixButton
+                            ? `<div class="mt-3">${fixButton}</div>`
+                            : ""}
+
+                    </div>
+                </div>
+            `;
+
+        }).join("");
+
+    } catch (e) {
+
+        result.innerHTML =
+            `<div class="alert alert-danger">
+                Diagnostic failed: ${escapeHtml(e.message)}
+             </div>`;
+    }
+}
+
+function openFix(problem) {
+
+    currentFix = problem;
+
+    document.getElementById("fixProblem").textContent =
+        problem.Title || "-";
+
+    document.getElementById("fixEvidence").textContent =
+        problem.Evidence || problem.Message || "-";
+
+    document.getElementById("fixAction").textContent =
+        problem.FixAction || "-";
+
+    document.getElementById("fixResult").innerHTML = "";
+
+    document.getElementById("fixProgress").classList.add("d-none");
+
+    document.getElementById("confirmFixBtn").disabled = false;
+
+    new bootstrap.Modal(
+        document.getElementById("fixModal")
+    ).show();
+}
+
+async function executeFix() {
+
+    if (!currentFix) return;
+
+    const btn = document.getElementById("confirmFixBtn");
+
+    btn.disabled = true;
+
+    document.getElementById("fixProgress")
+        .classList.remove("d-none");
+
+    document.getElementById("fixResult").innerHTML = "";
+
+    try {
+
+        const before = currentFix.Evidence || currentFix.Message || "";
+
+        const result = await api("/fix", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                Action: currentFix.FixAction,
+                ProblemId: currentFix.Id,
+                Problem: currentFix.Title,
+                Before: before
+            })
+        }, 30000);
+
+        await new Promise(r => setTimeout(r, 1000));
+
+        const afterDiagnostic = await api(
+            "/diagnose",
+            {},
+            30000
+        );
+
+        const checks = afterDiagnostic.Checks || [];
+
+        const same = checks.find(
+            x => x.Id === currentFix.Id
+        );
+
+        const verified =
+            !same || same.Status !== "Problem";
+
+        document.getElementById("fixResult").innerHTML = `
+            <div class="alert ${verified ? "alert-success" : "alert-danger"}">
+
+                <strong>
+                    ${verified
+                        ? "✓ Fix verified"
+                        : "✕ Fix did not resolve the problem"}
+                </strong>
+
+                <hr>
+
+                <div>
+                    <strong>Action:</strong>
+                    ${escapeHtml(result.Message || currentFix.FixAction)}
                 </div>
 
-                ${action}
+                <div class="mt-2">
+                    <strong>Before:</strong>
+                    ${escapeHtml(before)}
+                </div>
 
-            </li>
+                <div class="mt-2">
+                    <strong>After:</strong>
+                    ${escapeHtml(
+                        same
+                            ? (same.Evidence || same.Message || same.Status)
+                            : "Problem no longer detected"
+                    )}
+                </div>
+
+            </div>
         `;
 
-    }).join("");
+        if (verified) {
+            toast("Fix completed and verified.", "success");
+        } else {
+            toast("Fix executed but problem remains.", "danger");
+        }
+
+        await refreshAll();
+
+    } catch (e) {
+
+        document.getElementById("fixResult").innerHTML =
+            `<div class="alert alert-danger">
+                Fix failed: ${escapeHtml(e.message)}
+             </div>`;
+
+        toast("Fix failed.", "danger");
+
+    } finally {
+
+        btn.disabled = false;
+
+        document.getElementById("fixProgress")
+            .classList.add("d-none");
+    }
 }
 
 async function loadProcesses() {
 
-    const cpuList =
-        document.getElementById("cpu-process-list");
+    try {
 
-    const ramList =
-        document.getElementById("ram-process-list");
+        const d = await api("/processes", {}, 15000);
 
-    cpuList.innerHTML =
-        '<li class="list-group-item text-muted">Loading...</li>';
+        processes = d.Processes || [];
 
-    ramList.innerHTML =
-        '<li class="list-group-item text-muted">Loading...</li>';
+        renderProcesses();
 
-    const data = await fetchAPI("/processes");
+    } catch (e) {
 
-    if (!data) {
+        document.getElementById("processTable").innerHTML =
+            `<tr>
+                <td colspan="7" class="text-danger text-center">
+                    ${escapeHtml(e.message)}
+                </td>
+             </tr>`;
+    }
+}
 
-        cpuList.innerHTML =
-            '<li class="list-group-item text-danger">Agent Offline</li>';
+function filterProcesses() {
+    renderProcesses();
+}
 
-        ramList.innerHTML =
-            '<li class="list-group-item text-danger">Agent Offline</li>';
+function renderProcesses() {
+
+    const search =
+        document.getElementById("processSearch").value
+            .toLowerCase();
+
+    const sort =
+        document.getElementById("processSort").value;
+
+    let list = processes.filter(p => {
+
+        const text = [
+            p.Name,
+            p.PID,
+            p.Path,
+            p.User
+        ].join(" ").toLowerCase();
+
+        return text.includes(search);
+    });
+
+    list.sort((a, b) => {
+
+        if (sort === "cpu")
+            return Number(b.CPUPercent || 0) -
+                   Number(a.CPUPercent || 0);
+
+        if (sort === "ram")
+            return Number(b.RAMBytes || 0) -
+                   Number(a.RAMBytes || 0);
+
+        if (sort === "pid")
+            return Number(a.PID || 0) -
+                   Number(b.PID || 0);
+
+        return String(a.Name || "")
+            .localeCompare(String(b.Name || ""));
+    });
+
+    if (!list.length) {
+
+        document.getElementById("processTable").innerHTML =
+            `<tr>
+                <td colspan="7" class="text-center text-muted">
+                    No matching process
+                </td>
+             </tr>`;
 
         return;
     }
 
-    cpuList.innerHTML =
-        processListHtml(data.cpu);
+    document.getElementById("processTable").innerHTML =
+        list.map(p => {
 
-    ramList.innerHTML =
-        processListHtml(data.ram);
+            const protectedText =
+                p.Protected
+                    ? `<span class="badge bg-warning text-dark">Protected</span>`
+                    : `<span class="badge bg-light text-dark">No</span>`;
+
+            const kill =
+                p.Protected
+                    ? ""
+                    : `
+                        <button class="btn btn-sm btn-outline-danger"
+                                onclick="killProcess(${Number(p.PID)}, '${escapeJs(p.Name)}')">
+                            Kill
+                        </button>
+                    `;
+
+            return `
+                <tr>
+
+                    <td>
+                        <strong>${escapeHtml(p.Name)}</strong>
+                        <div class="small-muted mono">
+                            ${escapeHtml(p.Path || "-")}
+                        </div>
+                    </td>
+
+                    <td class="mono">${p.PID}</td>
+
+                    <td>
+                        ${Number(p.CPUPercent || 0).toFixed(1)}%
+                    </td>
+
+                    <td>
+                        ${formatBytes(p.RAMBytes)}
+                    </td>
+
+                    <td>
+                        ${escapeHtml(p.User || "-")}
+                    </td>
+
+                    <td>
+                        ${protectedText}
+                    </td>
+
+                    <td>
+                        ${kill}
+                    </td>
+
+                </tr>
+            `;
+
+        }).join("");
 }
 
-async function killProcess(id, name) {
+function escapeJs(value) {
 
-    const confirmed = confirm(
-        `Kill process "${name}" (PID: ${id})?\n\nThis action cannot be undone.`
-    );
+    return String(value || "")
+        .replaceAll("\\", "\\\\")
+        .replaceAll("'", "\\'");
+}
 
-    if (!confirmed) return;
+async function killProcess(pid, name) {
 
-    const result = await fetchAPI("/kill", {
+    if (!confirm(
+        `Kill process?\n\n${name} (PID ${pid})`
+    )) {
+        return;
+    }
 
-        method: "POST",
+    try {
 
-        headers: {
-            "Content-Type": "application/json"
-        },
+        const result = await api("/kill", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                PID: pid,
+                Name: name
+            })
+        }, 15000);
 
-        body: JSON.stringify({
-            id,
-            name
-        })
-
-    });
-
-    if (result?.success) {
-
-        showToast(
-            result.message || `Terminated ${name}`
+        toast(
+            result.Message || "Process terminated.",
+            "success"
         );
 
         await loadProcesses();
-        await loadMetrics();
         await loadHistory();
-        await runDiagnose();
 
-    } else {
+    } catch (e) {
 
-        showToast(
-            `Kill failed: ${
-                result?.message || "Unknown error"
-            }`
+        toast(
+            "Kill failed: " + e.message,
+            "danger"
         );
     }
 }
 
-function historyBadge(result) {
+async function loadEvents() {
 
-    const value = String(result || "");
+    const container =
+        document.getElementById("eventResults");
 
-    if (
-        value === "VERIFIED_SUCCESS" ||
-        value === "SUCCESS"
-    ) {
-        return "bg-success";
+    container.innerHTML =
+        `<div class="text-center py-4">
+            <div class="spinner-border"></div>
+         </div>`;
+
+    try {
+
+        const d = await api("/events", {}, 20000);
+
+        const events = d.Events || [];
+
+        if (!events.length) {
+
+            container.innerHTML =
+                `<div class="alert alert-success">
+                    No recent Critical/Error events found.
+                 </div>`;
+
+            return;
+        }
+
+        container.innerHTML =
+            events.map(e => {
+
+                const level =
+                    String(e.Level || "").toLowerCase();
+
+                const cls =
+                    level.includes("critical")
+                        ? "danger"
+                        : "warning";
+
+                return `
+                    <div class="card mb-3">
+                        <div class="card-body">
+
+                            <div class="d-flex justify-content-between">
+
+                                <strong>
+                                    ${escapeHtml(e.Provider || "Windows")}
+                                </strong>
+
+                                <span class="badge bg-${cls}">
+                                    ${escapeHtml(e.Level)}
+                                </span>
+
+                            </div>
+
+                            <div class="small-muted">
+                                ${escapeHtml(e.Time)}
+                                · Event ID ${escapeHtml(e.Id)}
+                                · ${escapeHtml(e.LogName)}
+                            </div>
+
+                            <div class="event-message mt-2">
+                                ${escapeHtml(e.Message)}
+                            </div>
+
+                        </div>
+                    </div>
+                `;
+
+            }).join("");
+
+    } catch (e) {
+
+        container.innerHTML =
+            `<div class="alert alert-danger">
+                Event log read failed: ${escapeHtml(e.message)}
+             </div>`;
     }
-
-    if (
-        value === "VERIFIED_FAILED" ||
-        value === "FAILED"
-    ) {
-        return "bg-danger";
-    }
-
-    if (value === "PENDING") {
-        return "bg-warning text-dark";
-    }
-
-    return "bg-secondary";
 }
 
 async function loadHistory() {
 
-    const tbody =
-        document.getElementById("history-table-body");
+    try {
 
-    tbody.innerHTML = `
-        <tr>
-            <td colspan="5"
-                class="text-center text-muted py-4">
-                Loading...
-            </td>
-        </tr>
-    `;
+        const d = await api("/history");
 
-    const data = await fetchAPI("/history");
+        historyData = d.History || [];
 
-    if (!Array.isArray(data) || data.length === 0) {
+        document.getElementById("historyTable").innerHTML =
+            historyData.map(h => {
 
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="5"
-                    class="text-center text-muted py-5">
-                    No history found.
-                </td>
-            </tr>
-        `;
+                const result =
+                    String(h.Result || "").toUpperCase();
 
-        return;
-    }
-
-    tbody.innerHTML =
-        data.slice()
-            .reverse()
-            .map(item => {
+                const cls =
+                    result.includes("SUCCESS") ||
+                    result.includes("VERIFIED")
+                        ? "success"
+                        : result.includes("FAIL")
+                            ? "danger"
+                            : "secondary";
 
                 return `
                     <tr>
-                        <td>
-                            <small>
-                                ${escapeHtml(item.timestamp)}
-                            </small>
+
+                        <td class="small-muted">
+                            ${escapeHtml(h.Timestamp)}
                         </td>
 
                         <td>
-                            ${escapeHtml(item.computer)}
+                            ${escapeHtml(h.ComputerName || "-")}
                         </td>
 
                         <td>
-                            ${escapeHtml(item.problem)}
+                            ${escapeHtml(h.Problem || h.Event || "-")}
+                        </td>
+
+                        <td class="mono">
+                            ${escapeHtml(h.Action || "-")}
                         </td>
 
                         <td>
-                            <code>
-                                ${escapeHtml(item.action)}
-                            </code>
+                            ${escapeHtml(h.Before || "-")}
                         </td>
 
                         <td>
-                            <span class="badge ${historyBadge(item.result)}">
-                                ${escapeHtml(item.result)}
+                            ${escapeHtml(h.After || "-")}
+                        </td>
+
+                        <td>
+                            <span class="badge bg-${cls}">
+                                ${escapeHtml(h.Result || "-")}
                             </span>
                         </td>
+
                     </tr>
                 `;
 
-            })
-            .join("");
+            }).join("");
+
+    } catch (e) {
+
+        document.getElementById("historyTable").innerHTML =
+            `<tr>
+                <td colspan="7" class="text-danger">
+                    ${escapeHtml(e.message)}
+                </td>
+             </tr>`;
+    }
+}
+
+function exportHistory() {
+
+    window.open(API + "/export", "_blank");
+}
+
+function copyLauncher() {
+
+    const input =
+        document.getElementById("launcherCommand");
+
+    navigator.clipboard.writeText(input.value);
+
+    toast("Launcher command copied.", "success");
 }
 
 async function stopAgent() {
 
-    const confirmed = confirm(
-        "Stop Local Diagnostic Agent?"
-    );
-
-    if (!confirmed) return;
-
-    const result = await fetchAPI("/stop");
-
-    if (result?.success) {
-
-        showToast("Local Agent stopped.");
-
-        setTimeout(() => {
-            location.reload();
-        }, 1000);
-
-    } else {
-
-        showToast(
-            result?.message || "Unable to stop Agent"
-        );
+    if (!confirm("Stop the local diagnostic agent?")) {
+        return;
     }
-}
-
-async function refreshAll(showMessage = true) {
-
-    if (isRefreshing) return;
-
-    isRefreshing = true;
-
-    const button =
-        document.getElementById("refresh-btn");
-
-    button.disabled = true;
 
     try {
 
-        await Promise.allSettled([
-            loadMetrics(),
-            runDiagnose(),
-            loadProcesses(),
-            loadHistory()
-        ]);
+        await api("/stop", {
+            method: "POST"
+        });
 
-        if (showMessage) {
-            showToast("ข้อมูลถูก Refresh แล้ว");
-        }
+        toast("Agent stopping...", "warning");
 
-    } finally {
+        setTimeout(checkAgent, 1000);
 
-        button.disabled = false;
-        isRefreshing = false;
+    } catch (e) {
+
+        toast("Unable to stop agent.", "danger");
     }
 }
 
-refreshAll(false);
+async function refreshAll() {
+
+    await checkAgent();
+
+    await Promise.all([
+        loadMetrics(),
+        loadNetwork(),
+        loadServices(),
+        loadProcesses(),
+        loadHistory()
+    ]);
+}
+
+document
+    .querySelector('[data-bs-target="#eventTab"]')
+    .addEventListener("shown.bs.tab", loadEvents);
+
+document
+    .querySelector('[data-bs-target="#historyTab"]')
+    .addEventListener("shown.bs.tab", loadHistory);
+
+document
+    .querySelector('[data-bs-target="#processTab"]')
+    .addEventListener("shown.bs.tab", loadProcesses);
+
+refreshAll();
 
 setInterval(loadMetrics, 5000);
-
-setInterval(() => {
-
-    const activeTab =
-        document.querySelector(
-            ".nav-link.active"
-        );
-
-    if (!activeTab) return;
-
-    const target =
-        activeTab.getAttribute("data-bs-target");
-
-    if (target === "#content-proc") {
-        loadProcesses();
-    }
-
-    if (target === "#content-hist") {
-        loadHistory();
-    }
-
-}, 15000);
+setInterval(loadNetwork, 10000);
+setInterval(checkAgent, 10000);
 
 </script>
 

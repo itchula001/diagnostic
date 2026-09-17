@@ -1,142 +1,35 @@
 # ============================================================
-# Windows IT Diagnostic Local Agent V2
+# IT Diagnostic Agent V3
+# Windows PowerShell 5.1 compatible
 # ============================================================
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = "SilentlyContinue"
 
 $Port = 8765
 $Prefix = "http://127.0.0.1:$Port/"
 
-$AgentDir = Join-Path $env:LOCALAPPDATA "IT_Diagnostic_Agent"
-$HistoryFilePath = Join-Path $AgentDir "history.json"
+$BaseDir = Join-Path $env:LOCALAPPDATA "IT_Diagnostic_Agent"
+$HistoryFile = Join-Path $BaseDir "history.json"
+
+New-Item -ItemType Directory -Path $BaseDir -Force | Out-Null
 
 # ------------------------------------------------------------
-# Agent Directory
+# ADMIN CHECK
 # ------------------------------------------------------------
 
-if (-not (Test-Path $AgentDir)) {
-    New-Item -ItemType Directory -Force -Path $AgentDir | Out-Null
-}
+$CurrentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$WindowsPrincipal = New-Object Security.Principal.WindowsPrincipal($CurrentIdentity)
+
+$IsAdmin = $WindowsPrincipal.IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator
+)
 
 # ------------------------------------------------------------
-# HTTP Listener
+# PROTECTED PROCESSES
 # ------------------------------------------------------------
 
-$listener = New-Object System.Net.HttpListener
-$listener.Prefixes.Add($Prefix)
-
-try {
-    $listener.Start()
-}
-catch {
-    Write-Host ""
-    Write-Host "❌ Cannot start Local Agent." -ForegroundColor Red
-    Write-Host "Port $Port may already be in use." -ForegroundColor Yellow
-    Write-Host $_.Exception.Message -ForegroundColor Red
-    exit 1
-}
-
-Write-Host ""
-Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host " Windows IT Diagnostic Local Agent V2" -ForegroundColor Cyan
-Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "✅ Agent Started" -ForegroundColor Green
-Write-Host "Listening: $Prefix" -ForegroundColor Yellow
-Write-Host "Computer : $env:COMPUTERNAME" -ForegroundColor Yellow
-Write-Host "User     : $env:USERNAME" -ForegroundColor Yellow
-Write-Host ""
-
-# ------------------------------------------------------------
-# History
-# ------------------------------------------------------------
-
-[array]$global:HistoryLog = @()
-
-if (Test-Path $HistoryFilePath) {
-
-    try {
-
-        $raw = Get-Content `
-            -Path $HistoryFilePath `
-            -Raw `
-            -ErrorAction Stop
-
-        if (-not [string]::IsNullOrWhiteSpace($raw)) {
-
-            $parsed = $raw | ConvertFrom-Json
-
-            if ($null -ne $parsed) {
-                $global:HistoryLog = @($parsed)
-            }
-        }
-
-    }
-    catch {
-
-        $global:HistoryLog = @()
-    }
-}
-
-function Save-HistoryToFile {
-
-    try {
-
-        $global:HistoryLog |
-            ConvertTo-Json -Depth 5 |
-            Set-Content `
-                -Path $HistoryFilePath `
-                -Encoding UTF8
-
-    }
-    catch {
-        Write-Host "History save failed: $($_.Exception.Message)" `
-            -ForegroundColor Yellow
-    }
-}
-
-function Add-History {
-
-    param(
-        [string]$Problem,
-        [string]$Action,
-        [string]$Result
-    )
-
-    $entry = [ordered]@{
-        timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        computer  = $env:COMPUTERNAME
-        problem   = $Problem
-        action    = $Action
-        result    = $Result
-    }
-
-    $global:HistoryLog = @(
-        $global:HistoryLog
-        $entry
-    )
-
-    # จำกัด History สูงสุด 500 รายการ
-    if ($global:HistoryLog.Count -gt 500) {
-
-        $global:HistoryLog =
-            @(
-                $global:HistoryLog |
-                Select-Object -Last 500
-            )
-    }
-
-    Save-HistoryToFile
-}
-
-# ------------------------------------------------------------
-# Protected Processes
-# ------------------------------------------------------------
-
-$ProtectedList = @(
+$ProtectedProcesses = @(
     "System",
-    "Idle",
-    "Memory Compression",
     "Registry",
     "smss",
     "csrss",
@@ -145,79 +38,210 @@ $ProtectedList = @(
     "lsass",
     "winlogon",
     "svchost",
-    "dwm",
-    "sihost",
-    "taskhostw",
     "fontdrvhost",
-    "conhost",
-    "explorer"
+    "dwm",
+    "Memory Compression",
+    "Secure System",
+    "Idle"
 )
 
-function Test-ProtectedProcess {
+# ------------------------------------------------------------
+# HISTORY
+# ------------------------------------------------------------
 
-    param(
-        [string]$Name
-    )
+function Load-History {
 
-    if ([string]::IsNullOrWhiteSpace($Name)) {
-        return $true
+    if (!(Test-Path $HistoryFile)) {
+        return @()
     }
 
-    return (
-        $ProtectedList -contains $Name
+    try {
+        $raw = Get-Content $HistoryFile -Raw
+
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            return @()
+        }
+
+        $data = $raw | ConvertFrom-Json
+
+        if ($data -is [System.Array]) {
+            return @($data)
+        }
+
+        return @($data)
+
+    } catch {
+
+        return @()
+    }
+}
+
+function Save-History {
+
+    param(
+        [array]$History
     )
+
+    try {
+
+        if ($History.Count -gt 500) {
+            $History = $History | Select-Object -Last 500
+        }
+
+        $History |
+            ConvertTo-Json -Depth 8 |
+            Set-Content -Path $HistoryFile -Encoding UTF8
+
+    } catch {}
+}
+
+function Add-History {
+
+    param(
+        [string]$Problem,
+        [string]$Action,
+        [string]$Before,
+        [string]$After,
+        [string]$Result,
+        [string]$Event = ""
+    )
+
+    $history = Load-History
+
+    $entry = [PSCustomObject]@{
+        Timestamp    = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        ComputerName = $env:COMPUTERNAME
+        Problem      = $Problem
+        Action       = $Action
+        Before       = $Before
+        After        = $After
+        Result       = $Result
+        Event        = $Event
+    }
+
+    $history += $entry
+
+    Save-History $history
 }
 
 # ------------------------------------------------------------
-# JSON Response
+# HTTP HELPERS
 # ------------------------------------------------------------
+
+function Set-Cors {
+
+    param(
+        $Context
+    )
+
+    $origin = $Context.Request.Headers["Origin"]
+
+    $allowed = @(
+        "https://itchula001.github.io",
+        "http://localhost",
+        "http://127.0.0.1",
+        "null"
+    )
+
+    if (
+        [string]::IsNullOrWhiteSpace($origin) -or
+        $allowed -contains $origin -or
+        $origin.StartsWith("http://localhost:") -or
+        $origin.StartsWith("http://127.0.0.1:")
+    ) {
+
+        if ($origin) {
+            $Context.Response.Headers.Add(
+                "Access-Control-Allow-Origin",
+                $origin
+            )
+        } else {
+            $Context.Response.Headers.Add(
+                "Access-Control-Allow-Origin",
+                "*"
+            )
+        }
+    }
+
+    $Context.Response.Headers.Add(
+        "Access-Control-Allow-Headers",
+        "Content-Type"
+    )
+
+    $Context.Response.Headers.Add(
+        "Access-Control-Allow-Methods",
+        "GET,POST,OPTIONS"
+    )
+}
 
 function Send-Json {
 
     param(
-        $Response,
-        $Data,
+        $Context,
+        $Object,
         [int]$StatusCode = 200
     )
 
-    try {
+    Set-Cors $Context
 
-        $json = $Data | ConvertTo-Json -Depth 8
+    $json = $Object | ConvertTo-Json -Depth 10
 
-        $buffer = [System.Text.Encoding]::UTF8.GetBytes($json)
+    $bytes = [Text.Encoding]::UTF8.GetBytes($json)
 
-        $Response.StatusCode = $StatusCode
-        $Response.ContentType = "application/json; charset=utf-8"
-        $Response.ContentEncoding = [System.Text.Encoding]::UTF8
-        $Response.ContentLength64 = $buffer.Length
+    $Context.Response.StatusCode = $StatusCode
+    $Context.Response.ContentType = "application/json; charset=utf-8"
+    $Context.Response.ContentLength64 = $bytes.Length
 
-        $Response.OutputStream.Write(
-            $buffer,
-            0,
-            $buffer.Length
-        )
+    $Context.Response.OutputStream.Write(
+        $bytes,
+        0,
+        $bytes.Length
+    )
 
-    }
-    finally {
-
-        $Response.Close()
-    }
+    $Context.Response.OutputStream.Close()
 }
 
-function Read-JsonBody {
+function Send-Text {
 
     param(
-        $Request
+        $Context,
+        [string]$Text,
+        [string]$ContentType = "text/plain; charset=utf-8",
+        [int]$StatusCode = 200
     )
 
-    $reader = New-Object System.IO.StreamReader(
-        $Request.InputStream,
-        $Request.ContentEncoding
+    Set-Cors $Context
+
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
+
+    $Context.Response.StatusCode = $StatusCode
+    $Context.Response.ContentType = $ContentType
+    $Context.Response.ContentLength64 = $bytes.Length
+
+    $Context.Response.OutputStream.Write(
+        $bytes,
+        0,
+        $bytes.Length
+    )
+
+    $Context.Response.OutputStream.Close()
+}
+
+function Get-RequestBody {
+
+    param(
+        $Context
     )
 
     try {
 
+        $reader = New-Object IO.StreamReader(
+            $Context.Request.InputStream
+        )
+
         $body = $reader.ReadToEnd()
+
+        $reader.Close()
 
         if ([string]::IsNullOrWhiteSpace($body)) {
             return $null
@@ -225,781 +249,1341 @@ function Read-JsonBody {
 
         return ($body | ConvertFrom-Json)
 
-    }
-    finally {
+    } catch {
 
-        $reader.Dispose()
+        return $null
     }
 }
 
 # ------------------------------------------------------------
-# CPU
+# SYSTEM
 # ------------------------------------------------------------
 
-function Get-CpuUsage {
+function Get-SystemInfo {
+
+    $os = Get-CimInstance Win32_OperatingSystem
+    $computer = Get-CimInstance Win32_ComputerSystem
+    $bios = Get-CimInstance Win32_BIOS
+
+    $boot = $os.LastBootUpTime
+
+    $uptime = 0
+
+    if ($boot) {
+        $uptime = ((Get-Date) - $boot).TotalSeconds
+    }
+
+    $ips = @()
 
     try {
 
-        $cpu = Get-CimInstance Win32_Processor |
-            Measure-Object `
-                -Property LoadPercentage `
-                -Average |
-            Select-Object -ExpandProperty Average
+        $ips = Get-NetIPAddress `
+            -AddressFamily IPv4 `
+            -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.IPAddress -notlike "127.*" -and
+                $_.IPAddress -notlike "169.254.*"
+            } |
+            Select-Object -ExpandProperty IPAddress
 
-        if ($null -eq $cpu) {
-            return 0
-        }
+    } catch {}
 
-        return [math]::Round([double]$cpu)
+    $primaryIp = $null
 
+    if ($ips.Count -gt 0) {
+        $primaryIp = $ips[0]
     }
-    catch {
 
-        return 0
-    }
-}
-
-# ------------------------------------------------------------
-# RAM
-# ------------------------------------------------------------
-
-function Get-RamInfo {
-
-    try {
-
-        $os = Get-CimInstance Win32_OperatingSystem
-
-        $total = [double]$os.TotalVisibleMemorySize
-        $free = [double]$os.FreePhysicalMemory
-
-        if ($total -le 0) {
-            return @{
-                percent = 0
-                freeGB  = 0
-            }
-        }
-
-        $percent = [math]::Round(
-            (($total - $free) / $total) * 100
-        )
-
-        $freeGB = [math]::Round(
-            $free / 1MB,
-            2
-        )
-
-        return @{
-            percent = $percent
-            freeGB  = $freeGB
-        }
-    }
-    catch {
-
-        return @{
-            percent = 0
-            freeGB  = 0
-        }
+    return [PSCustomObject]@{
+        ComputerName = $env:COMPUTERNAME
+        OSCaption    = $os.Caption
+        OSVersion    = $os.Version
+        BuildNumber  = $os.BuildNumber
+        Manufacturer = $computer.Manufacturer
+        Model        = $computer.Model
+        BIOSVersion  = $bios.SMBIOSBIOSVersion
+        PrimaryIP    = $primaryIp
+        IPAddresses  = @($ips)
+        UptimeSeconds = [Math]::Round($uptime)
+        IsAdmin      = $IsAdmin
+        AgentVersion = "3.0.0"
+        PowerShell   = $PSVersionTable.PSVersion.ToString()
     }
 }
 
 # ------------------------------------------------------------
-# Disk
-# ------------------------------------------------------------
-
-function Get-SystemDiskInfo {
-
-    try {
-
-        $disk = Get-CimInstance Win32_LogicalDisk `
-            -Filter "DeviceID='C:'"
-
-        if ($null -eq $disk -or $disk.Size -le 0) {
-
-            return @{
-                percent = 0
-                freeGB  = 0
-            }
-        }
-
-        $percent = [math]::Round(
-            (($disk.Size - $disk.FreeSpace) / $disk.Size) * 100
-        )
-
-        $freeGB = [math]::Round(
-            $disk.FreeSpace / 1GB,
-            2
-        )
-
-        return @{
-            percent = $percent
-            freeGB  = $freeGB
-        }
-    }
-    catch {
-
-        return @{
-            percent = 0
-            freeGB  = 0
-        }
-    }
-}
-
-# ------------------------------------------------------------
-# Metrics
+# METRICS
 # ------------------------------------------------------------
 
 function Get-Metrics {
 
-    $cpu = Get-CpuUsage
-    $ram = Get-RamInfo
-    $disk = Get-SystemDiskInfo
+    $cpuData = Get-CimInstance Win32_Processor
 
-    return @{
-        cpu       = $cpu
-        ram       = $ram.percent
-        ramFreeGB = $ram.freeGB
-        disk      = $disk.percent
-        diskFreeGB = $disk.freeGB
-        computer  = $env:COMPUTERNAME
-        timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $cpu = 0
+
+    if ($cpuData) {
+
+        $avg = (
+            $cpuData |
+            Measure-Object LoadPercentage -Average
+        ).Average
+
+        if ($avg) {
+            $cpu = [Math]::Round($avg, 1)
+        }
+    }
+
+    $os = Get-CimInstance Win32_OperatingSystem
+
+    $totalRam = [double]$os.TotalVisibleMemorySize * 1KB
+    $freeRam = [double]$os.FreePhysicalMemory * 1KB
+
+    $usedRam = $totalRam - $freeRam
+
+    $ramPercent = 0
+
+    if ($totalRam -gt 0) {
+        $ramPercent =
+            [Math]::Round(
+                ($usedRam / $totalRam) * 100,
+                1
+            )
+    }
+
+    $disk = Get-CimInstance Win32_LogicalDisk `
+        -Filter "DeviceID='C:'"
+
+    $diskTotal = 0
+    $diskFree = 0
+    $diskUsed = 0
+    $diskPercent = 0
+
+    if ($disk) {
+
+        $diskTotal = [double]$disk.Size
+        $diskFree = [double]$disk.FreeSpace
+        $diskUsed = $diskTotal - $diskFree
+
+        if ($diskTotal -gt 0) {
+
+            $diskPercent =
+                [Math]::Round(
+                    ($diskUsed / $diskTotal) * 100,
+                    1
+                )
+        }
+    }
+
+    return [PSCustomObject]@{
+        CPU        = $cpu
+        CPUName    = ($cpuData | Select-Object -First 1 -ExpandProperty Name)
+        RAMPercent = $ramPercent
+        RAMUsed    = [Math]::Round($usedRam)
+        RAMTotal   = [Math]::Round($totalRam)
+        RAMFree    = [Math]::Round($freeRam)
+        DiskPercent = $diskPercent
+        DiskUsed   = [Math]::Round($diskUsed)
+        DiskTotal  = [Math]::Round($diskTotal)
+        DiskFree   = [Math]::Round($diskFree)
     }
 }
 
 # ------------------------------------------------------------
-# Processes
+# NETWORK
 # ------------------------------------------------------------
 
-function Get-ProcessData {
+function Get-NetworkInfo {
 
-    $processes = @()
+    $adapter = $null
 
     try {
 
-        $processes = Get-Process |
-            ForEach-Object {
+        $adapter = Get-NetIPConfiguration |
+            Where-Object {
+                $_.IPv4DefaultGateway -ne $null -and
+                $_.NetAdapter.Status -eq "Up"
+            } |
+            Select-Object -First 1
 
-                $cpuTime = 0
+    } catch {}
 
-                try {
-                    if ($null -ne $_.CPU) {
-                        $cpuTime = [math]::Round(
-                            [double]$_.CPU,
-                            1
-                        )
-                    }
-                }
-                catch {}
+    $adapterOK = $false
+    $adapterName = ""
+    $gateway = ""
+    $gatewayPingOK = $false
+    $gatewayLatency = $null
+    $dnsOK = $false
+    $dnsAddress = ""
+    $internetOK = $false
+    $internetLatency = $null
 
-                $ramMB = 0
+    if ($adapter) {
 
-                try {
-                    $ramMB = [math]::Round(
-                        $_.WorkingSet64 / 1MB,
-                        1
-                    )
-                }
-                catch {}
+        $adapterOK = $true
 
-                [PSCustomObject]@{
-                    Id       = $_.Id
-                    Name     = $_.Name
-                    CPU_Time = $cpuTime
-                    RAM_MB   = $ramMB
-                    IsSystem = Test-ProtectedProcess $_.Name
-                }
+        $adapterName =
+            $adapter.InterfaceAlias
+
+        $gateway =
+            $adapter.IPv4DefaultGateway.NextHop
+
+        try {
+
+            $ping = Test-Connection `
+                -ComputerName $gateway `
+                -Count 1 `
+                -ErrorAction Stop
+
+            $gatewayPingOK = $true
+            $gatewayLatency =
+                [Math]::Round($ping.ResponseTime)
+
+        } catch {}
+
+        if ($adapter.DNSServer.ServerAddresses) {
+
+            $dnsAddress =
+                $adapter.DNSServer.ServerAddresses[0]
+        }
+
+        try {
+
+            $dnsResult = Resolve-DnsName `
+                -Name "www.microsoft.com" `
+                -Type A `
+                -Server $dnsAddress `
+                -ErrorAction Stop
+
+            if ($dnsResult) {
+                $dnsOK = $true
             }
+
+        } catch {
+
+            try {
+
+                $dnsResult = Resolve-DnsName `
+                    -Name "www.microsoft.com" `
+                    -Type A `
+                    -ErrorAction Stop
+
+                if ($dnsResult) {
+                    $dnsOK = $true
+                }
+
+            } catch {}
+        }
+
+        try {
+
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+
+            $request = Invoke-WebRequest `
+                -Uri "https://www.msftconnecttest.com/connecttest.txt" `
+                -UseBasicParsing `
+                -TimeoutSec 5 `
+                -ErrorAction Stop
+
+            $sw.Stop()
+
+            if ($request.StatusCode -ge 200 -and
+                $request.StatusCode -lt 500) {
+
+                $internetOK = $true
+                $internetLatency =
+                    [Math]::Round($sw.Elapsed.TotalMilliseconds)
+            }
+
+        } catch {}
     }
-    catch {}
 
-    $topCpu = @(
-        $processes |
-        Sort-Object CPU_Time -Descending |
-        Select-Object -First 10
-    )
-
-    $topRam = @(
-        $processes |
-        Sort-Object RAM_MB -Descending |
-        Select-Object -First 10
-    )
-
-    return @{
-        cpu = $topCpu
-        ram = $topRam
+    return [PSCustomObject]@{
+        AdapterOK = $adapterOK
+        AdapterName = $adapterName
+        Gateway = $gateway
+        GatewayPingOK = $gatewayPingOK
+        GatewayLatencyMs = $gatewayLatency
+        DNSOK = $dnsOK
+        DNSAddress = $dnsAddress
+        InternetOK = $internetOK
+        InternetLatencyMs = $internetLatency
     }
 }
 
 # ------------------------------------------------------------
-# Diagnostic
+# SERVICES
+# ------------------------------------------------------------
+
+$ImportantServices = @(
+    "Spooler",
+    "wuauserv",
+    "BITS",
+    "Winmgmt",
+    "Dhcp",
+    "Dnscache",
+    "LanmanWorkstation",
+    "EventLog"
+)
+
+function Get-ServiceHealth {
+
+    $result = @()
+
+    foreach ($name in $ImportantServices) {
+
+        $service = Get-Service `
+            -Name $name `
+            -ErrorAction SilentlyContinue
+
+        if ($service) {
+
+            $startType = ""
+
+            try {
+
+                $cim = Get-CimInstance Win32_Service `
+                    -Filter "Name='$name'"
+
+                if ($cim) {
+                    $startType = $cim.StartMode
+                }
+
+            } catch {}
+
+            $result += [PSCustomObject]@{
+                Name = $service.Name
+                DisplayName = $service.DisplayName
+                Status = $service.Status.ToString()
+                StartType = $startType
+            }
+
+        }
+    }
+
+    return [PSCustomObject]@{
+        Services = @($result)
+    }
+}
+
+# ------------------------------------------------------------
+# EVENTS
+# ------------------------------------------------------------
+
+function Get-RecentEvents {
+
+    $events = @()
+
+    foreach ($log in @("System", "Application")) {
+
+        try {
+
+            $items = Get-WinEvent `
+                -FilterHashtable @{
+                    LogName = $log
+                    Level = 1,2
+                    StartTime = (Get-Date).AddHours(-24)
+                } `
+                -MaxEvents 15 `
+                -ErrorAction Stop
+
+            foreach ($e in $items) {
+
+                $message = $e.Message
+
+                if ($message.Length -gt 1500) {
+                    $message = $message.Substring(0,1500)
+                }
+
+                $events += [PSCustomObject]@{
+                    Time = $e.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss")
+                    LogName = $log
+                    Id = $e.Id
+                    Level = $e.LevelDisplayName
+                    Provider = $e.ProviderName
+                    Message = $message
+                }
+            }
+
+        } catch {}
+    }
+
+    return [PSCustomObject]@{
+        Events = @(
+            $events |
+            Sort-Object Time -Descending |
+            Select-Object -First 30
+        )
+    }
+}
+
+# ------------------------------------------------------------
+# PROCESS MONITOR
+# ------------------------------------------------------------
+
+function Get-ProcessSnapshot {
+
+    $map = @{}
+
+    $cimProcesses = Get-CimInstance Win32_Process
+
+    foreach ($cp in $cimProcesses) {
+
+        $map[[int]$cp.ProcessId] = $cp
+    }
+
+    $items = @()
+
+    foreach ($p in Get-Process) {
+
+        try {
+
+            $cpu = $p.CPU
+            $ram = $p.WorkingSet64
+
+            $path = ""
+
+            if ($map.ContainsKey($p.Id)) {
+                $path = $map[$p.Id].ExecutablePath
+            }
+
+            $user = ""
+
+            try {
+
+                $owner = Invoke-CimMethod `
+                    -InputObject $map[$p.Id] `
+                    -MethodName GetOwner
+
+                if ($owner.User) {
+                    $user = "$($owner.Domain)\$($owner.User)"
+                }
+
+            } catch {}
+
+            $items += [PSCustomObject]@{
+                PID = $p.Id
+                Name = $p.ProcessName
+                CPUTime = [double]$cpu
+                RAMBytes = [long]$ram
+                Path = $path
+                User = $user
+                Protected = (
+                    $ProtectedProcesses -contains $p.ProcessName
+                )
+            }
+
+        } catch {}
+    }
+
+    return @($items)
+}
+
+function Get-Processes {
+
+    $first = Get-ProcessSnapshot
+
+    Start-Sleep -Milliseconds 400
+
+    $second = Get-ProcessSnapshot
+
+    $lookup = @{}
+
+    foreach ($x in $first) {
+        $lookup[$x.PID] = $x
+    }
+
+    $logicalProcessors = 1
+
+    try {
+        $logicalProcessors =
+            (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
+    } catch {}
+
+    $result = @()
+
+    foreach ($x in $second) {
+
+        $cpuPercent = 0
+
+        if ($lookup.ContainsKey($x.PID)) {
+
+            $old = $lookup[$x.PID]
+
+            $delta =
+                [double]$x.CPUTime -
+                [double]$old.CPUTime
+
+            if ($delta -ge 0) {
+
+                $cpuPercent =
+                    ($delta / 0.4) /
+                    [Math]::Max(1,$logicalProcessors) *
+                    100
+            }
+        }
+
+        $result += [PSCustomObject]@{
+            PID = $x.PID
+            Name = $x.Name
+            CPUPercent = [Math]::Round($cpuPercent,1)
+            RAMBytes = $x.RAMBytes
+            Path = $x.Path
+            User = $x.User
+            Protected = $x.Protected
+        }
+    }
+
+    return [PSCustomObject]@{
+        Processes = @(
+            $result |
+            Sort-Object CPUPercent -Descending |
+            Select-Object -First 50
+        )
+    }
+}
+
+# ------------------------------------------------------------
+# DIAGNOSTIC HELPERS
+# ------------------------------------------------------------
+
+function New-Check {
+
+    param(
+        [string]$Id,
+        [string]$Title,
+        [string]$Status,
+        [string]$Message,
+        [string]$Evidence,
+        [string]$FixAction = "",
+        [int]$DurationMs = 0
+    )
+
+    return [PSCustomObject]@{
+        Id = $Id
+        Title = $Title
+        Status = $Status
+        Message = $Message
+        Evidence = $Evidence
+        FixAction = $FixAction
+        DurationMs = $DurationMs
+    }
+}
+
+# ------------------------------------------------------------
+# DISK SCAN
+# ------------------------------------------------------------
+
+function Find-LargeFiles {
+
+    $targets = @()
+
+    $userProfile = $env:USERPROFILE
+
+    if ($userProfile) {
+        $targets += Join-Path $userProfile "Downloads"
+        $targets += Join-Path $userProfile "Desktop"
+        $targets += Join-Path $userProfile "Documents"
+    }
+
+    $targets += $env:TEMP
+    $targets += "C:\Windows\Temp"
+
+    $files = @()
+
+    foreach ($target in $targets) {
+
+        if (!(Test-Path $target)) {
+            continue
+        }
+
+        try {
+
+            Get-ChildItem `
+                -Path $target `
+                -File `
+                -Recurse `
+                -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.Length -ge 500MB
+                } |
+                Select-Object -First 100 |
+                ForEach-Object {
+
+                    $files += [PSCustomObject]@{
+                        Path = $_.FullName
+                        SizeBytes = $_.Length
+                        Size = "{0:N1} GB" -f ($_.Length / 1GB)
+                        Modified = $_.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+                    }
+                }
+
+        } catch {}
+    }
+
+    return [PSCustomObject]@{
+        Files = @(
+            $files |
+            Sort-Object SizeBytes -Descending |
+            Select-Object -First 50
+        )
+    }
+}
+
+# ------------------------------------------------------------
+# FULL DIAGNOSTIC
 # ------------------------------------------------------------
 
 function Invoke-Diagnostic {
 
-    $problems = @()
+    $overall = [Diagnostics.Stopwatch]::StartNew()
 
-    # ========================================================
-    # 1. Disk
-    # ========================================================
+    $checks = @()
 
-    $disk = Get-SystemDiskInfo
+    # CPU
+    $sw = [Diagnostics.Stopwatch]::StartNew()
 
-    if ($disk.percent -gt 90) {
+    $metrics = Get-Metrics
 
-        $problems += @{
-            id = "DISK_C_FULL"
-            title = "Disk (C:) Critically Low ($($disk.percent)%)"
-            severity = "critical"
-            description = "Drive C has very limited free space."
-            evidence = @(
-                "Usage: $($disk.percent)%",
-                "Free space: $($disk.freeGB) GB"
-            )
-            possibleCauses = @(
-                "Temporary files",
-                "Large application data",
-                "Large logs"
-            )
-            recommendedFix = "Clean-Temp"
-        }
+    $sw.Stop()
 
-    }
-    elseif ($disk.percent -gt 85) {
+    if ($metrics.CPU -ge 90) {
 
-        $problems += @{
-            id = "DISK_C_LOW"
-            title = "Disk (C:) Low Space ($($disk.percent)%)"
-            severity = "warning"
-            description = "Drive C is running low on free space."
-            evidence = @(
-                "Usage: $($disk.percent)%",
-                "Free space: $($disk.freeGB) GB"
-            )
-            possibleCauses = @(
-                "Temporary files",
-                "Large logs",
-                "Downloads"
-            )
-            recommendedFix = "Clean-Temp"
-        }
-    }
+        $proc = Get-Processes
 
-    # ========================================================
-    # 2. Print Spooler
-    # ========================================================
+        $top = $proc.Processes |
+            Sort-Object CPUPercent -Descending |
+            Select-Object -First 3
 
-    $spooler = Get-Service `
-        -Name "Spooler" `
-        -ErrorAction SilentlyContinue
+        $evidence =
+            ($top | ForEach-Object {
+                "$($_.Name) PID $($_.PID) $($_.CPUPercent)%"
+            }) -join ", "
 
-    if ($spooler) {
-
-        if ($spooler.Status -ne "Running") {
-
-            $problems += @{
-                id = "SPOOLER_STOP"
-                title = "Print Spooler Service Stopped"
-                severity = "warning"
-                description = "Windows Print Spooler is not running."
-                evidence = @(
-                    "Status: $($spooler.Status)",
-                    "StartType: $($spooler.StartType)"
-                )
-                possibleCauses = @(
-                    "Service stopped",
-                    "Service crash"
-                )
-                recommendedFix = "restart-spooler"
-            }
-        }
-    }
-
-    # ========================================================
-    # 3. Windows Update
-    # ========================================================
-
-    $wuauserv = Get-Service `
-        -Name "wuauserv" `
-        -ErrorAction SilentlyContinue
-
-    if ($wuauserv) {
-
-        if (
-            $wuauserv.Status -ne "Running" -and
-            $wuauserv.StartType -eq "Automatic"
-        ) {
-
-            $problems += @{
-                id = "WUAUSERV_STOPPED"
-                title = "Windows Update Service Stopped"
-                severity = "warning"
-                description = "Windows Update is configured for automatic startup but is not running."
-                evidence = @(
-                    "Status: $($wuauserv.Status)",
-                    "StartType: $($wuauserv.StartType)"
-                )
-                possibleCauses = @(
-                    "Service stopped",
-                    "Temporary service failure"
-                )
-                recommendedFix = "restart-service-wuauserv"
-            }
-        }
-    }
-
-    # ========================================================
-    # 4. Network
-    # ========================================================
-
-    $activeAdapters = @(
-        Get-NetAdapter -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Status -eq "Up" -and
-            $_.InterfaceDescription -notmatch "Virtual|Loopback"
-        }
-    )
-
-    $gateway = $null
-
-    try {
-
-        $gateway = Get-CimInstance `
-            Win32_NetworkAdapterConfiguration |
-            Where-Object {
-                $_.IPEnabled -eq $true -and
-                $_.DefaultIPGateway
-            } |
-            ForEach-Object {
-                $_.DefaultIPGateway
-            } |
-            Select-Object -First 1
+        $checks += New-Check `
+            "CPU_HIGH" `
+            "High CPU Usage" `
+            "Problem" `
+            "CPU usage is critically high." `
+            "$([int]$metrics.CPU)% CPU. Top: $evidence" `
+            "" `
+            $sw.ElapsedMilliseconds
 
     }
-    catch {}
+    elseif ($metrics.CPU -ge 75) {
 
-    if (
-        $activeAdapters.Count -eq 0 -or
-        [string]::IsNullOrWhiteSpace([string]$gateway)
-    ) {
-
-        $problems += @{
-            id = "NETWORK_DISCONNECTED"
-            title = "Network / Wi-Fi Disconnected"
-            severity = "critical"
-            description = "No active physical network adapter or default gateway was detected."
-            evidence = @(
-                "Active adapter: None",
-                "Gateway: None"
-            )
-            possibleCauses = @(
-                "Wi-Fi disabled",
-                "Ethernet disconnected",
-                "DHCP failure"
-            )
-            recommendedFix = "renew-ip"
-        }
+        $checks += New-Check `
+            "CPU_HIGH" `
+            "High CPU Usage" `
+            "Warning" `
+            "CPU usage is elevated." `
+            "$([int]$metrics.CPU)% CPU" `
+            "" `
+            $sw.ElapsedMilliseconds
 
     }
     else {
 
-        # ----------------------------------------------------
-        # Gateway ping
-        # ----------------------------------------------------
+        $checks += New-Check `
+            "CPU_HIGH" `
+            "CPU Usage" `
+            "OK" `
+            "CPU usage is within normal range." `
+            "$([int]$metrics.CPU)% CPU" `
+            "" `
+            $sw.ElapsedMilliseconds
+    }
 
-        $gatewayPing = $false
+    # RAM
+    $sw.Restart()
 
-        try {
+    if ($metrics.RAMPercent -ge 90) {
 
-            $ping = New-Object System.Net.NetworkInformation.Ping
+        $proc = Get-Processes
 
-            $reply = $ping.Send(
-                [string]$gateway,
-                1000
-            )
+        $top = $proc.Processes |
+            Sort-Object RAMBytes -Descending |
+            Select-Object -First 3
 
-            if ($reply.Status -eq "Success") {
-                $gatewayPing = $true
-            }
+        $evidence =
+            ($top | ForEach-Object {
+                "$($_.Name) $([Math]::Round($_.RAMBytes/1MB)) MB"
+            }) -join ", "
 
-        }
-        catch {}
+        $checks += New-Check `
+            "RAM_HIGH" `
+            "High Memory Usage" `
+            "Problem" `
+            "Physical memory usage is critically high." `
+            "$([int]$metrics.RAMPercent)% RAM. Top: $evidence" `
+            "restart-windows-search" `
+            $sw.ElapsedMilliseconds
 
-        if (-not $gatewayPing) {
+    }
+    elseif ($metrics.RAMPercent -ge 80) {
 
-            $problems += @{
-                id = "GATEWAY_UNREACHABLE"
-                title = "Gateway Unreachable ($gateway)"
-                severity = "critical"
-                description = "The local default gateway did not respond to ping."
-                evidence = @(
-                    "Gateway: $gateway",
-                    "Ping: FAILED"
-                )
-                possibleCauses = @(
-                    "Router unavailable",
-                    "Network isolation",
-                    "IP conflict"
-                )
-                recommendedFix = "renew-ip"
-            }
+        $checks += New-Check `
+            "RAM_HIGH" `
+            "High Memory Usage" `
+            "Warning" `
+            "Memory usage is elevated." `
+            "$([int]$metrics.RAMPercent)% RAM" `
+            "" `
+            $sw.ElapsedMilliseconds
+
+    }
+    else {
+
+        $checks += New-Check `
+            "RAM_HIGH" `
+            "Memory Usage" `
+            "OK" `
+            "Memory usage is within normal range." `
+            "$([int]$metrics.RAMPercent)% RAM" `
+            "" `
+            $sw.ElapsedMilliseconds
+    }
+
+    # DISK
+    $sw.Restart()
+
+    if ($metrics.DiskPercent -ge 95) {
+
+        $checks += New-Check `
+            "DISK_FULL" `
+            "Disk C: Almost Full" `
+            "Problem" `
+            "Disk C: has very little free space." `
+            "$([int]$metrics.DiskPercent)% used. Free: $([Math]::Round($metrics.DiskFree/1GB,1)) GB" `
+            "Clean-Temp" `
+            $sw.ElapsedMilliseconds
+
+    }
+    elseif ($metrics.DiskPercent -ge 85) {
+
+        $checks += New-Check `
+            "DISK_FULL" `
+            "Disk C: Usage High" `
+            "Warning" `
+            "Disk C: usage is high." `
+            "$([int]$metrics.DiskPercent)% used. Free: $([Math]::Round($metrics.DiskFree/1GB,1)) GB" `
+            "Clean-Temp" `
+            $sw.ElapsedMilliseconds
+
+    }
+    else {
+
+        $checks += New-Check `
+            "DISK_FULL" `
+            "Disk C: Usage" `
+            "OK" `
+            "Disk space is within normal range." `
+            "$([int]$metrics.DiskPercent)% used" `
+            "" `
+            $sw.ElapsedMilliseconds
+    }
+
+    # NETWORK
+    $sw.Restart()
+
+    $network = Get-NetworkInfo
+
+    if (!$network.AdapterOK) {
+
+        $checks += New-Check `
+            "NETWORK" `
+            "Network Adapter" `
+            "Problem" `
+            "No active network adapter with a default gateway was found." `
+            "No active adapter" `
+            "" `
+            $sw.ElapsedMilliseconds
+
+    }
+    elseif (!$network.GatewayPingOK) {
+
+        $checks += New-Check `
+            "NETWORK" `
+            "Gateway Connectivity" `
+            "Problem" `
+            "The local gateway did not respond." `
+            "Gateway: $($network.Gateway)" `
+            "flush-dns" `
+            $sw.ElapsedMilliseconds
+
+    }
+    elseif (!$network.DNSOK) {
+
+        $checks += New-Check `
+            "NETWORK" `
+            "DNS Resolution" `
+            "Problem" `
+            "DNS resolution failed." `
+            "DNS: $($network.DNSAddress)" `
+            "flush-dns" `
+            $sw.ElapsedMilliseconds
+
+    }
+    elseif (!$network.InternetOK) {
+
+        $checks += New-Check `
+            "NETWORK" `
+            "Internet Connectivity" `
+            "Problem" `
+            "Internet connectivity failed." `
+            "Gateway OK / DNS OK / Internet FAILED" `
+            "flush-dns" `
+            $sw.ElapsedMilliseconds
+
+    }
+    else {
+
+        $checks += New-Check `
+            "NETWORK" `
+            "Network Connectivity" `
+            "OK" `
+            "Gateway, DNS and Internet connectivity are working." `
+            "Gateway $($network.GatewayLatencyMs) ms / Internet $($network.InternetLatencyMs) ms" `
+            "" `
+            $sw.ElapsedMilliseconds
+    }
+
+    # SPOOLER
+    $sw.Restart()
+
+    $spooler = Get-Service Spooler -ErrorAction SilentlyContinue
+
+    if ($spooler -and $spooler.Status -ne "Running") {
+
+        $checks += New-Check `
+            "SPOOLER" `
+            "Print Spooler" `
+            "Problem" `
+            "Print Spooler is not running." `
+            "Status: $($spooler.Status)" `
+            "restart-spooler" `
+            $sw.ElapsedMilliseconds
+
+    }
+    else {
+
+        $checks += New-Check `
+            "SPOOLER" `
+            "Print Spooler" `
+            "OK" `
+            "Print Spooler is running." `
+            "Status: Running" `
+            "" `
+            $sw.ElapsedMilliseconds
+    }
+
+    # WINDOWS UPDATE
+    $sw.Restart()
+
+    $wu = Get-Service wuauserv -ErrorAction SilentlyContinue
+
+    if ($wu -and $wu.Status -ne "Running") {
+
+        $checks += New-Check `
+            "WINDOWS_UPDATE" `
+            "Windows Update Service" `
+            "Warning" `
+            "Windows Update service is not running." `
+            "Status: $($wu.Status)" `
+            "restart-service-wuauserv" `
+            $sw.ElapsedMilliseconds
+
+    }
+    else {
+
+        $checks += New-Check `
+            "WINDOWS_UPDATE" `
+            "Windows Update Service" `
+            "OK" `
+            "Windows Update service is running." `
+            "Status: Running" `
+            "" `
+            $sw.ElapsedMilliseconds
+    }
+
+    # DEFENDER
+    $sw.Restart()
+
+    try {
+
+        $defender = Get-MpComputerStatus
+
+        if ($defender.AntivirusEnabled) {
+
+            $checks += New-Check `
+                "DEFENDER" `
+                "Microsoft Defender" `
+                "OK" `
+                "Microsoft Defender antivirus is enabled." `
+                "AntivirusEnabled=True / RealTime=$($defender.RealTimeProtectionEnabled)" `
+                "" `
+                $sw.ElapsedMilliseconds
 
         }
         else {
 
-            # ------------------------------------------------
-            # DNS
-            # ------------------------------------------------
-
-            $dnsOk = $false
-
-            try {
-
-                $addresses =
-                    [System.Net.Dns]::GetHostAddresses(
-                        "www.google.com"
-                    )
-
-                if ($addresses.Count -gt 0) {
-                    $dnsOk = $true
-                }
-
-            }
-            catch {}
-
-            if (-not $dnsOk) {
-
-                $problems += @{
-                    id = "DNS_FAILURE"
-                    title = "DNS Resolution Failed"
-                    severity = "warning"
-                    description = "Gateway is reachable but DNS resolution failed."
-                    evidence = @(
-                        "Gateway Ping: OK",
-                        "DNS lookup: FAILED"
-                    )
-                    possibleCauses = @(
-                        "DNS server unavailable",
-                        "DNS cache problem"
-                    )
-                    recommendedFix = "flush-dns"
-                }
-            }
-        }
-    }
-
-    # ========================================================
-    # 5. Defender
-    # ========================================================
-
-    try {
-
-        $defender =
-            Get-MpComputerStatus `
-                -ErrorAction Stop
-
-        if (
-            $defender.RealTimeProtectionEnabled -eq $false
-        ) {
-
-            $problems += @{
-                id = "SECURITY_DEFENDER_DISABLED"
-                title = "Antivirus Protection Off"
-                severity = "critical"
-                description = "Microsoft Defender Real-Time Protection is disabled."
-                evidence = @(
-                    "RealTimeProtectionEnabled: False"
-                )
-                possibleCauses = @(
-                    "Protection disabled",
-                    "Security configuration issue"
-                )
-                recommendedFix = "enable-defender"
-            }
+            $checks += New-Check `
+                "DEFENDER" `
+                "Microsoft Defender" `
+                "Problem" `
+                "Microsoft Defender antivirus is disabled." `
+                "AntivirusEnabled=False" `
+                "enable-defender" `
+                $sw.ElapsedMilliseconds
         }
 
+    } catch {
+
+        $checks += New-Check `
+            "DEFENDER" `
+            "Microsoft Defender" `
+            "Warning" `
+            "Defender status could not be read." `
+            $_.Exception.Message `
+            "" `
+            $sw.ElapsedMilliseconds
     }
-    catch {}
 
-    # ========================================================
-    # 6. RAM
-    # ========================================================
+    # EVENT LOG
+    $sw.Restart()
 
-    $ram = Get-RamInfo
+    $events = Get-RecentEvents
 
-    if ($ram.percent -gt 90) {
-
-        $problems += @{
-            id = "RAM_HIGH"
-            title = "High Memory Usage ($($ram.percent)%)"
-            severity = "critical"
-            description = "Available physical memory is very low."
-            evidence = @(
-                "RAM usage: $($ram.percent)%",
-                "Free RAM: $($ram.freeGB) GB"
-            )
-            possibleCauses = @(
-                "Heavy applications",
-                "Large background processes"
-            )
-            recommendedFix = "Clear-Memory"
+    $critical = @(
+        $events.Events |
+        Where-Object {
+            $_.Level -eq "Critical"
         }
+    ).Count
 
-    }
-    elseif ($ram.percent -gt 85) {
-
-        $problems += @{
-            id = "RAM_HIGH"
-            title = "High Memory Usage ($($ram.percent)%)"
-            severity = "warning"
-            description = "System memory usage is high."
-            evidence = @(
-                "RAM usage: $($ram.percent)%",
-                "Free RAM: $($ram.freeGB) GB"
-            )
-            possibleCauses = @(
-                "Heavy applications",
-                "Multiple applications"
-            )
-            recommendedFix = "Clear-Memory"
+    $errors = @(
+        $events.Events |
+        Where-Object {
+            $_.Level -eq "Error"
         }
+    ).Count
+
+    if ($critical -gt 0) {
+
+        $checks += New-Check `
+            "EVENT_ERRORS" `
+            "Windows Event Errors" `
+            "Warning" `
+            "Recent critical events were found." `
+            "$critical Critical / $errors Error events in last 24 hours" `
+            "" `
+            $sw.ElapsedMilliseconds
+
+    }
+    else {
+
+        $checks += New-Check `
+            "EVENT_ERRORS" `
+            "Windows Event Errors" `
+            "OK" `
+            "No recent Critical events detected." `
+            "$errors Error events in last 24 hours" `
+            "" `
+            $sw.ElapsedMilliseconds
     }
 
-    # ========================================================
-    # 7. CPU
-    # ========================================================
+    $overall.Stop()
 
-    $cpu = Get-CpuUsage
-
-    if ($cpu -gt 90) {
-
-        $problems += @{
-            id = "CPU_HIGH"
-            title = "High CPU Usage ($cpu%)"
-            severity = "critical"
-            description = "Processor load is currently very high."
-            evidence = @(
-                "CPU usage: $cpu%"
-            )
-            possibleCauses = @(
-                "Heavy application",
-                "Background process",
-                "Runaway process"
-            )
-            recommendedFix = ""
-        }
-    }
-
-    return @{
-        problems = @($problems)
-        timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        computer = $env:COMPUTERNAME
+    return [PSCustomObject]@{
+        Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        DurationMs = [int]$overall.ElapsedMilliseconds
+        Checks = @($checks)
     }
 }
 
 # ------------------------------------------------------------
-# Whitelisted Fix
+# FIX ACTIONS
 # ------------------------------------------------------------
 
-$AllowedFixes = @(
-    "Clean-Temp",
-    "restart-spooler",
-    "restart-service-wuauserv",
-    "Clear-Memory",
-    "flush-dns",
-    "renew-ip",
-    "gpupdate",
-    "enable-defender"
-)
-
-function Invoke-WhitelistedFix {
+function Invoke-Fix {
 
     param(
-        [string]$Action
+        $Body
     )
 
-    if (
-        [string]::IsNullOrWhiteSpace($Action) -or
-        $AllowedFixes -notcontains $Action
-    ) {
+    if (!$IsAdmin) {
 
-        return @{
-            success = $false
-            message = "Action not in whitelist."
+        return [PSCustomObject]@{
+            Success = $false
+            Message = "Administrator privileges are required."
         }
     }
 
+    $action = [string]$Body.Action
+    $problem = [string]$Body.Problem
+    $before = [string]$Body.Before
+
+    $after = ""
+    $success = $false
+    $message = ""
+
     try {
 
-        switch ($Action) {
+        switch ($action) {
 
             "Clean-Temp" {
 
-                $paths = @(
+                $targets = @(
                     $env:TEMP,
-                    "$env:WINDIR\Temp"
+                    "C:\Windows\Temp"
                 )
 
-                foreach ($path in $paths) {
+                $deleted = 0
 
-                    if (Test-Path $path) {
+                foreach ($target in $targets) {
+
+                    if (Test-Path $target) {
 
                         Get-ChildItem `
-                            -Path $path `
+                            -Path $target `
                             -Force `
+                            -Recurse `
                             -ErrorAction SilentlyContinue |
                             Remove-Item `
-                                -Recurse `
                                 -Force `
+                                -Recurse `
                                 -ErrorAction SilentlyContinue
+
+                        $deleted++
                     }
                 }
 
-                return @{
-                    success = $true
-                    message = "Temporary files cleanup completed."
-                }
+                $success = $true
+                $message = "Temporary file cleanup completed."
+                $after = "Cleanup targets processed: $deleted"
             }
 
             "restart-spooler" {
 
                 Restart-Service `
-                    -Name "Spooler" `
+                    -Name Spooler `
                     -Force `
                     -ErrorAction Stop
 
-                return @{
-                    success = $true
-                    message = "Print Spooler restarted."
-                }
+                Start-Sleep -Milliseconds 500
+
+                $s = Get-Service Spooler
+
+                $success = ($s.Status -eq "Running")
+                $message = "Print Spooler restart completed."
+                $after = "Status: $($s.Status)"
             }
 
             "restart-service-wuauserv" {
 
                 Restart-Service `
-                    -Name "wuauserv" `
+                    -Name wuauserv `
                     -Force `
                     -ErrorAction Stop
 
-                return @{
-                    success = $true
-                    message = "Windows Update Service restarted."
-                }
+                Start-Sleep -Milliseconds 500
+
+                $s = Get-Service wuauserv
+
+                $success = ($s.Status -eq "Running")
+                $message = "Windows Update service restart completed."
+                $after = "Status: $($s.Status)"
             }
 
-            "Clear-Memory" {
+            "restart-bits" {
 
-                [System.GC]::Collect()
-                [System.GC]::WaitForPendingFinalizers()
+                Restart-Service `
+                    -Name BITS `
+                    -Force `
+                    -ErrorAction Stop
 
-                return @{
-                    success = $true
-                    message = "PowerShell/.NET memory cleanup executed."
-                }
+                Start-Sleep -Milliseconds 500
+
+                $s = Get-Service BITS
+
+                $success = ($s.Status -eq "Running")
+                $message = "BITS restart completed."
+                $after = "Status: $($s.Status)"
             }
 
             "flush-dns" {
 
-                Clear-DnsClientCache `
-                    -ErrorAction Stop
+                $result = ipconfig /flushdns
 
-                return @{
-                    success = $true
-                    message = "DNS client cache flushed."
-                }
+                $success = $true
+                $message = "DNS cache flush completed."
+                $after = ($result -join " ")
             }
 
             "renew-ip" {
 
-                $process = Start-Process `
-                    -FilePath "ipconfig.exe" `
-                    -ArgumentList "/renew" `
-                    -NoNewWindow `
-                    -Wait `
-                    -PassThru
+                ipconfig /renew | Out-Null
 
-                if ($process.ExitCode -ne 0) {
-
-                    return @{
-                        success = $false
-                        message = "ipconfig /renew failed with exit code $($process.ExitCode)."
-                    }
-                }
-
-                return @{
-                    success = $true
-                    message = "IP address renewal completed."
-                }
+                $success = $true
+                $message = "DHCP IP renewal requested."
+                $after = "ipconfig /renew completed"
             }
 
             "gpupdate" {
 
-                $process = Start-Process `
-                    -FilePath "gpupdate.exe" `
-                    -ArgumentList "/force" `
-                    -NoNewWindow `
-                    -Wait `
-                    -PassThru
+                $result = gpupdate /force 2>&1
 
-                return @{
-                    success = ($process.ExitCode -eq 0)
-                    message = "Group Policy update completed with exit code $($process.ExitCode)."
-                }
+                $success = $true
+                $message = "Group Policy refresh completed."
+                $after = ($result -join " ")
             }
 
             "enable-defender" {
 
                 Set-MpPreference `
-                    -DisableRealtimeMonitoring $false `
+                    -DisableRealtimeMonitoring $false
+
+                $status = Get-MpComputerStatus
+
+                $success =
+                    [bool]$status.RealTimeProtectionEnabled
+
+                $message =
+                    "Microsoft Defender real-time protection was requested."
+
+                $after =
+                    "RealTimeProtectionEnabled=$($status.RealTimeProtectionEnabled)"
+            }
+
+            "restart-windows-search" {
+
+                Restart-Service `
+                    -Name WSearch `
+                    -Force `
                     -ErrorAction Stop
 
-                return @{
-                    success = $true
-                    message = "Microsoft Defender Real-Time Protection enable command executed."
-                }
+                $s = Get-Service WSearch
+
+                $success = ($s.Status -eq "Running")
+
+                $message =
+                    "Windows Search service restart completed."
+
+                $after =
+                    "Status: $($s.Status)"
+            }
+
+            default {
+
+                throw "Unsupported fix action."
             }
         }
 
-    }
-    catch {
+    } catch {
 
-        return @{
-            success = $false
-            message = $_.Exception.Message
+        $success = $false
+        $message = $_.Exception.Message
+        $after = "Action failed"
+    }
+
+    $resultText =
+        if ($success) {
+            "SUCCESS"
+        } else {
+            "FAILED"
+        }
+
+    Add-History `
+        -Problem $problem `
+        -Action $action `
+        -Before $before `
+        -After $after `
+        -Result $resultText
+
+    return [PSCustomObject]@{
+        Success = $success
+        Message = $message
+        Action = $action
+        Before = $before
+        After = $after
+        Result = $resultText
+    }
+}
+
+# ------------------------------------------------------------
+# KILL PROCESS
+# ------------------------------------------------------------
+
+function Invoke-KillProcess {
+
+    param(
+        $Body
+    )
+
+    if (!$IsAdmin) {
+
+        return [PSCustomObject]@{
+            Success = $false
+            Message = "Administrator privileges are required."
+        }
+    }
+
+    $pid = 0
+
+    try {
+        $pid = [int]$Body.PID
+    } catch {}
+
+    if ($pid -le 0) {
+
+        return [PSCustomObject]@{
+            Success = $false
+            Message = "Invalid PID."
+        }
+    }
+
+    try {
+
+        $process = Get-Process `
+            -Id $pid `
+            -ErrorAction Stop
+
+        $actualName = $process.ProcessName
+
+        if ($ProtectedProcesses -contains $actualName) {
+
+            return [PSCustomObject]@{
+                Success = $false
+                Message = "Protected system process cannot be terminated."
+            }
+        }
+
+        if (
+            $Body.Name -and
+            $actualName -ne [string]$Body.Name
+        ) {
+
+            return [PSCustomObject]@{
+                Success = $false
+                Message = "Process identity changed. Kill cancelled."
+            }
+        }
+
+        $before =
+            "$actualName PID $pid Running"
+
+        Stop-Process `
+            -Id $pid `
+            -Force `
+            -ErrorAction Stop
+
+        Start-Sleep -Milliseconds 500
+
+        $stillRunning = Get-Process `
+            -Id $pid `
+            -ErrorAction SilentlyContinue
+
+        if ($stillRunning) {
+
+            Add-History `
+                -Problem "Process termination" `
+                -Action "Kill process" `
+                -Before $before `
+                -After "Process still running" `
+                -Result "FAILED"
+
+            return [PSCustomObject]@{
+                Success = $false
+                Message = "Process is still running."
+            }
+        }
+
+        Add-History `
+            -Problem "Process termination" `
+            -Action "Kill process" `
+            -Before $before `
+            -After "Process no longer exists" `
+            -Result "SUCCESS"
+
+        return [PSCustomObject]@{
+            Success = $true
+            Message = "$actualName (PID $pid) terminated and verified."
+        }
+
+    } catch {
+
+        return [PSCustomObject]@{
+            Success = $false
+            Message = $_.Exception.Message
         }
     }
 }
 
 # ------------------------------------------------------------
-# Main HTTP Loop
+# CSV EXPORT
 # ------------------------------------------------------------
+
+function Export-HistoryCsv {
+
+    $history = Load-History
+
+    if (!$history -or $history.Count -eq 0) {
+
+        return "Timestamp,ComputerName,Problem,Action,Before,After,Result,Event"
+    }
+
+    return (
+        $history |
+        ConvertTo-Csv -NoTypeInformation
+    ) -join "`r`n"
+}
+
+# ------------------------------------------------------------
+# HTTP SERVER
+# ------------------------------------------------------------
+
+$listener = New-Object System.Net.HttpListener
+
+$listener.Prefixes.Add($Prefix)
 
 try {
 
-    while ($listener.IsListening) {
+    $listener.Start()
+
+} catch {
+
+    Write-Host ""
+    Write-Host "Unable to start IT Diagnostic Agent." -ForegroundColor Red
+    Write-Host $_.Exception.Message
+    Write-Host ""
+    Read-Host "Press ENTER to exit"
+    exit
+}
+
+Write-Host ""
+Write-Host "============================================" -ForegroundColor Cyan
+Write-Host " IT Diagnostic Agent V3" -ForegroundColor Cyan
+Write-Host "============================================" -ForegroundColor Cyan
+Write-Host "URL       : $Prefix"
+Write-Host "Computer  : $env:COMPUTERNAME"
+Write-Host "Admin     : $IsAdmin"
+Write-Host "History   : $HistoryFile"
+Write-Host "============================================" -ForegroundColor Cyan
+Write-Host ""
+
+$running = $true
+
+while ($running) {
+
+    try {
 
         $context = $listener.GetContext()
 
         $request = $context.Request
         $response = $context.Response
 
-        # ----------------------------------------------------
-        # CORS
-        # ----------------------------------------------------
+        Set-Cors $context
 
-        $response.Headers.Add(
-            "Access-Control-Allow-Origin",
-            "*"
-        )
-
-        $response.Headers.Add(
-            "Access-Control-Allow-Methods",
-            "GET, POST, OPTIONS"
-        )
-
-        $response.Headers.Add(
-            "Access-Control-Allow-Headers",
-            "Content-Type"
-        )
-
+        # OPTIONS
         if ($request.HttpMethod -eq "OPTIONS") {
 
             $response.StatusCode = 204
@@ -1008,410 +1592,271 @@ try {
             continue
         }
 
-        $path = $request.Url.LocalPath
+        $path = $request.Url.AbsolutePath.ToLower()
+        $method = $request.HttpMethod.ToUpper()
 
-        Write-Host `
-            "[$(Get-Date -Format 'HH:mm:ss')] $($request.HttpMethod) $path" `
-            -ForegroundColor DarkGray
+        Write-Host (
+            "{0} {1}" -f $method,$path
+        )
 
-        # ====================================================
+        # ----------------------------------------------------
+        # SYSTEM
+        # ----------------------------------------------------
+
+        if ($path -eq "/system") {
+
+            Send-Json `
+                $context `
+                (Get-SystemInfo)
+
+            continue
+        }
+
+        # ----------------------------------------------------
         # METRICS
-        # ====================================================
+        # ----------------------------------------------------
 
         if ($path -eq "/metrics") {
 
             Send-Json `
-                -Response $response `
-                -Data (Get-Metrics)
+                $context `
+                (Get-Metrics)
 
             continue
         }
 
-        # ====================================================
+        # ----------------------------------------------------
+        # NETWORK
+        # ----------------------------------------------------
+
+        if ($path -eq "/network") {
+
+            Send-Json `
+                $context `
+                (Get-NetworkInfo)
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # SERVICES
+        # ----------------------------------------------------
+
+        if ($path -eq "/services") {
+
+            Send-Json `
+                $context `
+                (Get-ServiceHealth)
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # EVENTS
+        # ----------------------------------------------------
+
+        if ($path -eq "/events") {
+
+            Send-Json `
+                $context `
+                (Get-RecentEvents)
+
+            continue
+        }
+
+        # ----------------------------------------------------
         # PROCESSES
-        # ====================================================
+        # ----------------------------------------------------
 
         if ($path -eq "/processes") {
 
             Send-Json `
-                -Response $response `
-                -Data (Get-ProcessData)
+                $context `
+                (Get-Processes)
 
             continue
         }
 
-        # ====================================================
+        # ----------------------------------------------------
+        # DISK SCAN
+        # ----------------------------------------------------
+
+        if ($path -eq "/disk-scan") {
+
+            Send-Json `
+                $context `
+                (Find-LargeFiles)
+
+            continue
+        }
+
+        # ----------------------------------------------------
         # DIAGNOSTIC
-        # ====================================================
+        # ----------------------------------------------------
 
         if ($path -eq "/diagnose") {
 
             Send-Json `
-                -Response $response `
-                -Data (Invoke-Diagnostic)
+                $context `
+                (Invoke-Diagnostic)
 
             continue
         }
 
-        # ====================================================
+        # ----------------------------------------------------
+        # FIX
+        # ----------------------------------------------------
+
+        if ($path -eq "/fix") {
+
+            if ($method -ne "POST") {
+
+                Send-Json `
+                    $context `
+                    @{
+                        Success = $false
+                        Message = "POST required."
+                    } `
+                    405
+
+                continue
+            }
+
+            $body = Get-RequestBody $context
+
+            if (!$body) {
+
+                Send-Json `
+                    $context `
+                    @{
+                        Success = $false
+                        Message = "Invalid request body."
+                    } `
+                    400
+
+                continue
+            }
+
+            Send-Json `
+                $context `
+                (Invoke-Fix $body)
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # KILL
+        # ----------------------------------------------------
+
+        if ($path -eq "/kill") {
+
+            if ($method -ne "POST") {
+
+                Send-Json `
+                    $context `
+                    @{
+                        Success = $false
+                        Message = "POST required."
+                    } `
+                    405
+
+                continue
+            }
+
+            $body = Get-RequestBody $context
+
+            if (!$body) {
+
+                Send-Json `
+                    $context `
+                    @{
+                        Success = $false
+                        Message = "Invalid request body."
+                    } `
+                    400
+
+                continue
+            }
+
+            Send-Json `
+                $context `
+                (Invoke-KillProcess $body)
+
+            continue
+        }
+
+        # ----------------------------------------------------
         # HISTORY
-        # ====================================================
+        # ----------------------------------------------------
 
         if ($path -eq "/history") {
 
             Send-Json `
-                -Response $response `
-                -Data @($global:HistoryLog)
+                $context `
+                @{
+                    History = @(Load-History)
+                }
 
             continue
         }
 
-        # ====================================================
-        # FIX
-        # ====================================================
+        # ----------------------------------------------------
+        # EXPORT
+        # ----------------------------------------------------
 
-        if ($path -eq "/fix") {
+        if ($path -eq "/export") {
 
-            if ($request.HttpMethod -ne "POST") {
+            $csv = Export-HistoryCsv
 
-                Send-Json `
-                    -Response $response `
-                    -StatusCode 405 `
-                    -Data @{
-                        success = $false
-                        message = "POST required."
-                    }
-
-                continue
-            }
-
-            try {
-
-                $body = Read-JsonBody $request
-
-                if ($null -eq $body) {
-
-                    Send-Json `
-                        -Response $response `
-                        -StatusCode 400 `
-                        -Data @{
-                            success = $false
-                            message = "Invalid request body."
-                        }
-
-                    continue
-                }
-
-                $action =
-                    [string]$body.action
-
-                $title =
-                    [string]$body.title
-
-                $verificationStatus =
-                    [string]$body.verificationStatus
-
-                $result =
-                    Invoke-WhitelistedFix `
-                        -Action $action
-
-                if ($result.success) {
-
-                    $historyResult =
-                        if (
-                            [string]::IsNullOrWhiteSpace(
-                                $verificationStatus
-                            )
-                        ) {
-                            "EXECUTED"
-                        }
-                        else {
-                            $verificationStatus
-                        }
-
-                    Add-History `
-                        -Problem $title `
-                        -Action $action `
-                        -Result $historyResult
-                }
-                else {
-
-                    Add-History `
-                        -Problem $title `
-                        -Action $action `
-                        -Result "FAILED"
-                }
-
-                Send-Json `
-                    -Response $response `
-                    -Data $result
-
-            }
-            catch {
-
-                Send-Json `
-                    -Response $response `
-                    -StatusCode 400 `
-                    -Data @{
-                        success = $false
-                        message = $_.Exception.Message
-                    }
-            }
+            Send-Text `
+                $context `
+                $csv `
+                "text/csv; charset=utf-8"
 
             continue
         }
 
-        # ====================================================
-        # KILL PROCESS
-        # ====================================================
-
-        if ($path -eq "/kill") {
-
-            if ($request.HttpMethod -ne "POST") {
-
-                Send-Json `
-                    -Response $response `
-                    -StatusCode 405 `
-                    -Data @{
-                        success = $false
-                        message = "POST required."
-                    }
-
-                continue
-            }
-
-            try {
-
-                $body = Read-JsonBody $request
-
-                if ($null -eq $body) {
-
-                    Send-Json `
-                        -Response $response `
-                        -StatusCode 400 `
-                        -Data @{
-                            success = $false
-                            message = "Invalid request body."
-                        }
-
-                    continue
-                }
-
-                $pidValue = 0
-
-                if (
-                    -not [int]::TryParse(
-                        [string]$body.id,
-                        [ref]$pidValue
-                    )
-                ) {
-
-                    Send-Json `
-                        -Response $response `
-                        -StatusCode 400 `
-                        -Data @{
-                            success = $false
-                            message = "Invalid process ID."
-                        }
-
-                    continue
-                }
-
-                if ($pidValue -le 0) {
-
-                    Send-Json `
-                        -Response $response `
-                        -StatusCode 400 `
-                        -Data @{
-                            success = $false
-                            message = "Invalid process ID."
-                        }
-
-                    continue
-                }
-
-                $requestedName =
-                    [string]$body.name
-
-                # ------------------------------------------------
-                # อ่าน Process จริงจาก PID
-                # ------------------------------------------------
-
-                try {
-
-                    $process =
-                        Get-Process `
-                            -Id $pidValue `
-                            -ErrorAction Stop
-
-                }
-                catch {
-
-                    Send-Json `
-                        -Response $response `
-                        -StatusCode 404 `
-                        -Data @{
-                            success = $false
-                            message = "Process PID $pidValue was not found."
-                        }
-
-                    continue
-                }
-
-                $actualName =
-                    [string]$process.Name
-
-                # ------------------------------------------------
-                # ตรวจ Protected Process ฝั่ง Agent
-                # ------------------------------------------------
-
-                if (Test-ProtectedProcess $actualName) {
-
-                    Add-History `
-                        -Problem "Kill Process $actualName" `
-                        -Action "Kill PID $pidValue" `
-                        -Result "BLOCKED_PROTECTED"
-
-                    Send-Json `
-                        -Response $response `
-                        -StatusCode 403 `
-                        -Data @{
-                            success = $false
-                            message = "Protected process cannot be terminated: $actualName"
-                        }
-
-                    continue
-                }
-
-                # ------------------------------------------------
-                # ป้องกัน mismatch ระหว่างชื่อที่ส่งมากับ Process จริง
-                # ------------------------------------------------
-
-                if (
-                    -not [string]::IsNullOrWhiteSpace(
-                        $requestedName
-                    ) -and
-                    $requestedName -ne $actualName
-                ) {
-
-                    Add-History `
-                        -Problem "Kill Process $requestedName" `
-                        -Action "Kill PID $pidValue" `
-                        -Result "BLOCKED_NAME_MISMATCH"
-
-                    Send-Json `
-                        -Response $response `
-                        -StatusCode 409 `
-                        -Data @{
-                            success = $false
-                            message = "Process name mismatch. Actual process is '$actualName'."
-                        }
-
-                    continue
-                }
-
-                # ------------------------------------------------
-                # Kill
-                # ------------------------------------------------
-
-                try {
-
-                    Stop-Process `
-                        -Id $pidValue `
-                        -Force `
-                        -ErrorAction Stop
-
-                    Add-History `
-                        -Problem "Kill Process $actualName" `
-                        -Action "Kill PID $pidValue" `
-                        -Result "SUCCESS"
-
-                    Send-Json `
-                        -Response $response `
-                        -Data @{
-                            success = $true
-                            message = "Terminated $actualName (PID $pidValue)."
-                        }
-
-                }
-                catch {
-
-                    Add-History `
-                        -Problem "Kill Process $actualName" `
-                        -Action "Kill PID $pidValue" `
-                        -Result "FAILED"
-
-                    Send-Json `
-                        -Response $response `
-                        -Data @{
-                            success = $false
-                            message = $_.Exception.Message
-                        }
-                }
-
-            }
-            catch {
-
-                Send-Json `
-                    -Response $response `
-                    -StatusCode 400 `
-                    -Data @{
-                        success = $false
-                        message = $_.Exception.Message
-                    }
-            }
-
-            continue
-        }
-
-        # ====================================================
+        # ----------------------------------------------------
         # STOP
-        # ====================================================
+        # ----------------------------------------------------
 
         if ($path -eq "/stop") {
 
             Send-Json `
-                -Response $response `
-                -Data @{
-                    success = $true
-                    message = "Agent stopped."
+                $context `
+                @{
+                    Success = $true
+                    Message = "Agent stopping."
                 }
 
-            Write-Host ""
-            Write-Host "🛑 Agent stopped." -ForegroundColor Red
+            $running = $false
 
-            $listener.Stop()
-
-            break
+            continue
         }
 
-        # ====================================================
-        # 404
-        # ====================================================
+        # ----------------------------------------------------
+        # NOT FOUND
+        # ----------------------------------------------------
 
         Send-Json `
-            -Response $response `
-            -StatusCode 404 `
-            -Data @{
-                error = "Not Found"
-                path = $path
-            }
+            $context `
+            @{
+                Success = $false
+                Message = "Endpoint not found."
+                Path = $path
+            } `
+            404
+
+    } catch {
+
+        Write-Host "Request error: $($_.Exception.Message)" -ForegroundColor Red
     }
 }
-catch {
 
-    Write-Host ""
-    Write-Host "❌ Agent error:" -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Red
-}
-finally {
-
-    if ($listener.IsListening) {
-        $listener.Stop()
-    }
-
+try {
+    $listener.Stop()
     $listener.Close()
-}
+} catch {}
 
 Write-Host ""
-Write-Host "Agent process exited." -ForegroundColor Yellow
+Write-Host "IT Diagnostic Agent stopped." -ForegroundColor Yellow
