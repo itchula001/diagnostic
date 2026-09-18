@@ -21,11 +21,13 @@ New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 $global:CurrentJob = $null
 $global:History = @()
 
-if (Test-Path $HistoryFile) {
+if (Test-Path -LiteralPath $HistoryFile) {
     try {
         $raw = Get-Content $HistoryFile -Raw
+
         if (-not [string]::IsNullOrWhiteSpace($raw)) {
             $parsed = $raw | ConvertFrom-Json
+
             if ($null -ne $parsed) {
                 $global:History = @($parsed)
             }
@@ -477,6 +479,7 @@ function Get-ProcessStatus {
             $cpu = 0
 
             try {
+
                 $cpu =
                     [math]::Round(
                         $item.CPU,
@@ -484,6 +487,7 @@ function Get-ProcessStatus {
                     )
             }
             catch {
+
                 $cpu = 0
             }
 
@@ -933,14 +937,20 @@ function New-JobReport {
 <head>
 <meta charset="UTF-8">
 <title>IT Diagnostic Report - $($Job.id)</title>
+
 <style>
+
 body {
     font-family: Segoe UI, Arial, sans-serif;
     margin: 30px;
     background: #f4f6f8;
     color: #17202a;
 }
-h1 { margin-bottom: 5px; }
+
+h1 {
+    margin-bottom: 5px;
+}
+
 .card {
     background: white;
     border: 1px solid #d8dee4;
@@ -948,42 +958,52 @@ h1 { margin-bottom: 5px; }
     padding: 20px;
     margin-bottom: 20px;
 }
+
 .grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 12px;
 }
+
 .metric {
     background: #eef2f5;
     padding: 14px;
     border-radius: 8px;
 }
+
 .label {
     color: #68737d;
     font-size: 12px;
 }
+
 .value {
     font-size: 20px;
     font-weight: bold;
     margin-top: 5px;
 }
+
 table {
     width: 100%;
     border-collapse: collapse;
 }
-th, td {
+
+th,
+td {
     border: 1px solid #d8dee4;
     padding: 8px;
     text-align: left;
     vertical-align: top;
 }
+
 th {
     background: #eef2f5;
 }
+
 .ok {
     color: green;
     font-weight: bold;
 }
+
 </style>
 </head>
 
@@ -1123,6 +1143,7 @@ $(Get-Date)
 <h2>Diagnostics</h2>
 
 <table>
+
 <thead>
 <tr>
 <th>Problem</th>
@@ -1131,9 +1152,13 @@ $(Get-Date)
 <th>Recommended Fix</th>
 </tr>
 </thead>
+
 <tbody>
+
 $problemRows
+
 </tbody>
+
 </table>
 
 </div>
@@ -1150,6 +1175,7 @@ $(if ($network.internet) { "ONLINE" } else { "OFFLINE" })
 </p>
 
 <table>
+
 <thead>
 <tr>
 <th>Interface</th>
@@ -1158,11 +1184,14 @@ $(if ($network.internet) { "ONLINE" } else { "OFFLINE" })
 <th>DNS</th>
 </tr>
 </thead>
+
 <tbody>
+
 $(
     (
         $network.adapters |
         ForEach-Object {
+
             "<tr>" +
             "<td>$($_.interface)</td>" +
             "<td>$($_.ipv4)</td>" +
@@ -1172,7 +1201,9 @@ $(
         }
     ) -join ""
 )
+
 </tbody>
+
 </table>
 
 </div>
@@ -1182,6 +1213,7 @@ $(
 <h2>Services</h2>
 
 <table>
+
 <thead>
 <tr>
 <th>Name</th>
@@ -1190,9 +1222,13 @@ $(
 <th>Start Type</th>
 </tr>
 </thead>
+
 <tbody>
+
 $serviceRows
+
 </tbody>
+
 </table>
 
 </div>
@@ -1202,6 +1238,7 @@ $serviceRows
 <h2>Windows Events</h2>
 
 <table>
+
 <thead>
 <tr>
 <th>Time</th>
@@ -1211,9 +1248,13 @@ $serviceRows
 <th>Message</th>
 </tr>
 </thead>
+
 <tbody>
+
 $eventRows
+
 </tbody>
+
 </table>
 
 </div>
@@ -1223,6 +1264,7 @@ $eventRows
 <h2>Job Activity</h2>
 
 <table>
+
 <thead>
 <tr>
 <th>Time</th>
@@ -1230,11 +1272,14 @@ $eventRows
 <th>Message</th>
 </tr>
 </thead>
+
 <tbody>
+
 $(
     (
         $Job.events |
         ForEach-Object {
+
             "<tr>" +
             "<td>$($_.time)</td>" +
             "<td>$($_.action)</td>" +
@@ -1243,7 +1288,9 @@ $(
         }
     ) -join ""
 )
+
 </tbody>
+
 </table>
 
 </div>
@@ -1428,7 +1475,7 @@ function Get-ReportStatus {
             $ReportDir `
             "$safeId.html"
 
-    if (Test-Path $file) {
+    if (Test-Path -LiteralPath $file) {
 
         return @{
             success = $true
@@ -1467,8 +1514,10 @@ catch {
     Write-Host ""
     Write-Host "Unable to start IT Diagnostic Agent." `
         -ForegroundColor Red
+
     Write-Host $_.Exception.Message `
         -ForegroundColor Red
+
     Write-Host ""
 
     exit 1
@@ -1477,8 +1526,10 @@ catch {
 Write-Host ""
 Write-Host "IT Diagnostic Agent V5.1" `
     -ForegroundColor Green
+
 Write-Host "Listening on $AgentUrl" `
     -ForegroundColor Cyan
+
 Write-Host ""
 
 # ============================================================
@@ -1926,18 +1977,16 @@ try {
                     $TempDirectory
                 )
 
-                Start-Sleep `
-                    -Milliseconds 800
+                Start-Sleep -Milliseconds 800
 
                 try {
 
                     if (
-                        Test-Path
-                        $TempDirectory
+                        Test-Path -LiteralPath $TempDirectory
                     ) {
 
                         Remove-Item `
-                            -Path $TempDirectory `
+                            -LiteralPath $TempDirectory `
                             -Recurse `
                             -Force `
                             -ErrorAction SilentlyContinue
@@ -1947,8 +1996,7 @@ try {
                 catch {
                 }
 
-                Start-Sleep `
-                    -Milliseconds 300
+                Start-Sleep -Milliseconds 300
 
                 try {
 
@@ -1961,11 +2009,7 @@ try {
                 catch {
                 }
 
-            } `
-            -ArgumentList `
-                $targetPid,
-                $AgentTempDir |
-            Out-Null
+            } -ArgumentList $targetPid, $AgentTempDir | Out-Null
 
             continue
         }
@@ -1995,12 +2039,6 @@ finally {
             $listener.Stop()
         }
 
-    }
-    catch {
-    }
-
-    try {
-        $listener.Close()
     }
     catch {
     }
