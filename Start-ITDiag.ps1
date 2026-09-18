@@ -15,15 +15,15 @@ $PortalUrl = "https://itchula001.github.io/diagnostic/"
 
 
 # ============================================================
-# CHECK AGENT FILE
+# CHECK AGENT SCRIPT
 # ============================================================
 
-if (-not (Test-Path $AgentScript)) {
+if (-not (Test-Path -LiteralPath $AgentScript)) {
 
     Add-Type -AssemblyName PresentationFramework
 
     [System.Windows.MessageBox]::Show(
-        "ไม่พบ Start-Agent.ps1`n`n$AgentScript",
+        "Start-Agent.ps1 was not found.`n`n$AgentScript",
         "IT Diagnostic Portal V5",
         "OK",
         "Error"
@@ -34,7 +34,7 @@ if (-not (Test-Path $AgentScript)) {
 
 
 # ============================================================
-# CHECK EXISTING AGENT
+# CHECK CURRENT AGENT
 # ============================================================
 
 $agentOnline = $false
@@ -43,7 +43,7 @@ try {
 
     $status = Invoke-RestMethod `
         -Uri $AgentUrl `
-        -Method GET `
+        -Method Get `
         -TimeoutSec 2 `
         -ErrorAction Stop
 
@@ -60,7 +60,7 @@ catch {
 
 
 # ============================================================
-# START AGENT IF NEEDED
+# START AGENT
 # ============================================================
 
 if (-not $agentOnline) {
@@ -74,16 +74,18 @@ if (-not $agentOnline) {
                 "-ExecutionPolicy",
                 "Bypass",
                 "-File",
-                "`"$AgentScript`""
+                $AgentScript
             ) `
-            -WindowStyle Hidden | Out-Null
+            -WindowStyle Hidden `
+            -ErrorAction Stop |
+            Out-Null
     }
     catch {
 
         Add-Type -AssemblyName PresentationFramework
 
         [System.Windows.MessageBox]::Show(
-            "ไม่สามารถเปิด IT Diagnostic Agent ได้`n`n$($_.Exception.Message)",
+            "Unable to start IT Diagnostic Agent.`n`n$($_.Exception.Message)",
             "IT Diagnostic Portal V5",
             "OK",
             "Error"
@@ -102,13 +104,13 @@ $connected = $false
 
 for ($i = 0; $i -lt 30; $i++) {
 
-    Start-Sleep -Milliseconds 300
+    Start-Sleep -Milliseconds 500
 
     try {
 
         $status = Invoke-RestMethod `
             -Uri $AgentUrl `
-            -Method GET `
+            -Method Get `
             -TimeoutSec 2 `
             -ErrorAction Stop
 
@@ -126,7 +128,7 @@ for ($i = 0; $i -lt 30; $i++) {
 
 
 # ============================================================
-# AGENT FAILED
+# AGENT CONNECTION FAILED
 # ============================================================
 
 if (-not $connected) {
@@ -134,7 +136,7 @@ if (-not $connected) {
     Add-Type -AssemblyName PresentationFramework
 
     [System.Windows.MessageBox]::Show(
-        "ไม่สามารถเชื่อมต่อ IT Diagnostic Agent ได้`n`nURL:`n$AgentUrl`n`nตรวจสอบว่า Port 8765 ไม่ถูกโปรแกรมอื่นใช้งาน",
+        "Unable to connect to IT Diagnostic Agent.`n`nURL: $AgentUrl",
         "IT Diagnostic Portal V5",
         "OK",
         "Error"
@@ -145,19 +147,63 @@ if (-not $connected) {
 
 
 # ============================================================
-# OPEN PORTAL
+# VERIFY AGENT VERSION
 # ============================================================
 
 try {
 
-    Start-Process $PortalUrl | Out-Null
+    $status = Invoke-RestMethod `
+        -Uri $AgentUrl `
+        -Method Get `
+        -TimeoutSec 2 `
+        -ErrorAction Stop
+
+    if ([string]$status.version -ne "5.1") {
+
+        Add-Type -AssemblyName PresentationFramework
+
+        [System.Windows.MessageBox]::Show(
+            "An older IT Diagnostic Agent is running.`n`nDetected version: $($status.version)`nDetected PID: $($status.pid)`n`nPlease close the old Agent and run this launcher again.",
+            "IT Diagnostic Portal V5",
+            "OK",
+            "Warning"
+        ) | Out-Null
+
+        exit 1
+    }
 }
 catch {
 
     Add-Type -AssemblyName PresentationFramework
 
     [System.Windows.MessageBox]::Show(
-        "Agent ทำงานแล้ว แต่เปิด Portal ไม่สำเร็จ`n`n$PortalUrl",
+        "Agent version check failed.`n`n$($_.Exception.Message)",
+        "IT Diagnostic Portal V5",
+        "OK",
+        "Error"
+    ) | Out-Null
+
+    exit 1
+}
+
+
+# ============================================================
+# OPEN WEB PORTAL
+# ============================================================
+
+try {
+
+    Start-Process `
+        -FilePath $PortalUrl `
+        -ErrorAction Stop |
+        Out-Null
+}
+catch {
+
+    Add-Type -AssemblyName PresentationFramework
+
+    [System.Windows.MessageBox]::Show(
+        "Agent is running, but the web portal could not be opened.`n`n$PortalUrl",
         "IT Diagnostic Portal V5",
         "OK",
         "Warning"
@@ -168,7 +214,7 @@ catch {
 
 
 # ============================================================
-# DONE
+# EXIT
 # ============================================================
 
 exit 0
