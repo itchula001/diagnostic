@@ -1,0 +1,3266 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>IT FIELD DIAGNOSTIC PORTAL V5</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Segoe UI, Arial, sans-serif;
+    background: #0f172a;
+    color: #e5e7eb;
+}
+
+header {
+    padding: 20px 28px;
+    background: #111827;
+    border-bottom: 1px solid #334155;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.title {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.subtitle {
+    color: #94a3b8;
+    margin-top: 4px;
+    font-size: 13px;
+}
+
+.status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #ef4444;
+}
+
+.dot.online {
+    background: #22c55e;
+}
+
+.container {
+    padding: 24px;
+    max-width: 1600px;
+    margin: auto;
+}
+
+.toolbar {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+button {
+    border: 0;
+    border-radius: 8px;
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    background: #334155;
+    color: white;
+}
+
+button:hover {
+    opacity: .88;
+}
+
+button:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
+.start {
+    background: #16a34a;
+}
+
+.end {
+    background: #dc2626;
+}
+
+.stop {
+    background: #991b1b;
+}
+
+.secondary {
+    background: #475569;
+}
+
+.card {
+    background: #111827;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.card h2 {
+    margin-top: 0;
+    font-size: 18px;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 10px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(180px, 1fr)
+        );
+    gap: 14px;
+}
+
+.metric {
+    background: #1e293b;
+    border-radius: 9px;
+    padding: 16px;
+}
+
+.metric-label {
+    color: #94a3b8;
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+.metric-value {
+    margin-top: 5px;
+    font-size: 24px;
+    font-weight: 700;
+    word-break: break-word;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+th,
+td {
+    border-bottom: 1px solid #334155;
+    padding: 10px;
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    color: #94a3b8;
+    font-weight: 600;
+}
+
+pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #334155;
+}
+
+.badge-active {
+    background: #166534;
+}
+
+.badge-completed {
+    background: #475569;
+}
+
+.job-active {
+    border: 1px solid #16a34a;
+}
+
+.job-none {
+    color: #94a3b8;
+}
+
+.notice {
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: #1e293b;
+    margin-bottom: 18px;
+    display: none;
+}
+
+.notice.show {
+    display: block;
+}
+
+.report-box {
+    display: none;
+    margin-top: 14px;
+    margin-bottom: 20px;
+    padding: 16px;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: #0f172a;
+}
+
+.report-box.show {
+    display: block;
+}
+
+.report-status {
+    margin-top: 8px;
+    font-size: 13px;
+}
+
+.muted {
+    color: #94a3b8;
+}
+
+.section-hidden {
+    display: none;
+}
+
+.small-button {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.danger-text {
+    color: #fca5a5;
+}
+
+.success-text {
+    color: #86efac;
+}
+
+.warning-text {
+    color: #fde68a;
+}
+
+.loading {
+    color: #94a3b8;
+    padding: 10px 0;
+}
+
+@media (max-width: 800px) {
+
+    .container {
+        padding: 14px;
+    }
+
+    header {
+        padding: 16px;
+    }
+
+    table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<header>
+
+<div>
+
+<div class="title">
+IT FIELD DIAGNOSTIC PORTAL V5
+</div>
+
+<div class="subtitle">
+Technician Diagnostic & Repair Portal
+</div>
+
+</div>
+
+
+<div class="status">
+
+<span
+    id="statusDot"
+    class="dot">
+</span>
+
+<span id="agentStatus">
+Agent Offline
+</span>
+
+</div>
+
+</header>
+
+
+<div class="container">
+
+
+<!-- ===================================================== -->
+<!-- TOOLBAR -->
+<!-- ===================================================== -->
+
+<div class="toolbar">
+
+<button
+    id="startButton"
+    class="start"
+    onclick="startNewJob()">
+
+🚀 START NEW JOB
+
+</button>
+
+
+<button
+    id="endButton"
+    class="end"
+    onclick="endJob()"
+    disabled>
+
+🔴 END JOB
+
+</button>
+
+
+<button
+    id="stopAgentButton"
+    class="secondary"
+    onclick="stopAgent()">
+
+🛑 STOP AGENT
+
+</button>
+
+<button
+    id="refreshButton"
+    class="secondary"
+    onclick="refreshAll()">
+
+🔄 REFRESH
+
+</button>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- NOTICE -->
+<!-- ===================================================== -->
+
+<div
+    id="notice"
+    class="notice">
+</div>
+
+
+<!-- ===================================================== -->
+<!-- REPORT -->
+<!-- ===================================================== -->
+
+<div
+    id="reportBox"
+    class="report-box">
+
+<strong>
+📄 REPORT
+</strong>
+
+<div
+    id="reportPath"
+    class="muted"
+    style="margin-top:8px;">
+</div>
+
+<div
+    id="reportStatus"
+    class="report-status">
+</div>
+
+<button
+    id="openReportButton"
+    class="secondary"
+    style="margin-top:12px;"
+    onclick="openReport()"
+    disabled>
+
+📄 OPEN REPORT
+
+</button>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- DASHBOARD -->
+<!-- ===================================================== -->
+
+<div
+    id="dashboard"
+    class="section-hidden">
+
+
+<!-- ===================================================== -->
+<!-- CURRENT JOB -->
+<!-- ===================================================== -->
+
+<div
+    id="jobCard"
+    class="card job-active">
+
+<h2>
+Current Job
+</h2>
+
+<div class="grid">
+
+
+<div class="metric">
+
+<div class="metric-label">
+Job ID
+</div>
+
+<div
+    id="jobId"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Computer
+</div>
+
+<div
+    id="jobComputer"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Started
+</div>
+
+<div
+    id="jobStarted"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Status
+</div>
+
+<div
+    id="jobStatus"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+</div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- SYSTEM -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+<h2>
+System Information
+</h2>
+
+<div class="grid">
+
+
+<div class="metric">
+
+<div class="metric-label">
+Computer Name
+</div>
+
+<div
+    id="systemComputer"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+User
+</div>
+
+<div
+    id="systemUser"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Manufacturer
+</div>
+
+<div
+    id="systemManufacturer"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Model
+</div>
+
+<div
+    id="systemModel"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Windows
+</div>
+
+<div
+    id="systemWindows"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Build
+</div>
+
+<div
+    id="systemBuild"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Architecture
+</div>
+
+<div
+    id="systemArchitecture"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Memory
+</div>
+
+<div
+    id="systemMemory"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+</div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- HEALTH -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+<h2>
+System Health
+</h2>
+
+<div class="grid">
+
+
+<div class="metric">
+
+<div class="metric-label">
+Health Score
+</div>
+
+<div
+    id="health"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+CPU
+</div>
+
+<div
+    id="cpu"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+RAM
+</div>
+
+<div
+    id="ram"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Disk C:
+</div>
+
+<div
+    id="disk"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Free RAM
+</div>
+
+<div
+    id="ramFree"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Free Disk
+</div>
+
+<div
+    id="diskFree"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+</div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- DIAGNOSTICS -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+<h2>
+Diagnostics
+</h2>
+
+<div
+    id="diagnostics"
+    class="loading">
+Loading...
+</div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- NETWORK -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+<h2>
+Network
+</h2>
+
+<div
+    id="networkStatus"
+    style="margin-bottom:15px;">
+-
+</div>
+
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>
+Interface
+</th>
+
+<th>
+IPv4
+</th>
+
+<th>
+Gateway
+</th>
+
+<th>
+DNS
+</th>
+
+</tr>
+
+</thead>
+
+<tbody
+    id="networkTable">
+</tbody>
+
+</table>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- SERVICES -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+<h2>
+Services
+</h2>
+
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>
+Name
+</th>
+
+<th>
+Display Name
+</th>
+
+<th>
+Status
+</th>
+
+<th>
+Start Type
+</th>
+
+</tr>
+
+</thead>
+
+<tbody
+    id="servicesTable">
+</tbody>
+
+</table>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- PROCESSES -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+<h2>
+Processes
+</h2>
+
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>
+PID
+</th>
+
+<th>
+Name
+</th>
+
+<th>
+CPU
+</th>
+
+<th>
+Memory
+</th>
+
+<th>
+Action
+</th>
+
+</tr>
+
+</thead>
+
+<tbody
+    id="processesTable">
+</tbody>
+
+</table>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- WINDOWS EVENTS -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+<h2>
+Windows Events
+</h2>
+
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>
+Time
+</th>
+
+<th>
+ID
+</th>
+
+<th>
+Provider
+</th>
+
+<th>
+Level
+</th>
+
+<th>
+Message
+</th>
+
+</tr>
+
+</thead>
+
+<tbody
+    id="eventsTable">
+</tbody>
+
+</table>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- HISTORY -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+<h2>
+Job History
+</h2>
+
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>
+Job ID
+</th>
+
+<th>
+Computer
+</th>
+
+<th>
+Started
+</th>
+
+<th>
+Ended
+</th>
+
+</tr>
+
+</thead>
+
+<tbody
+    id="historyTable">
+</tbody>
+
+</table>
+
+</div>
+
+
+</div>
+
+
+</div>
+
+
+<script>
+
+
+// ============================================================
+// CONFIG
+// ============================================================
+
+const AGENT =
+    "http://127.0.0.1:8765";
+
+
+let currentJob =
+    null;
+
+
+let lastReport =
+    null;
+
+
+let lastReportJobId =
+    null;
+
+
+let refreshTimer =
+    null;
+
+
+let reportTimer =
+    null;
+
+
+let stoppingAgent =
+    false;
+
+
+// ============================================================
+// API
+// ============================================================
+
+async function api(
+    path,
+    options = {}
+) {
+
+    const response =
+        await fetch(
+            AGENT + path,
+            {
+                ...options,
+
+                headers: {
+                    "Content-Type":
+                        "application/json",
+
+                    ...(options.headers || {})
+                }
+            }
+        );
+
+
+    if (!response.ok) {
+
+        throw new Error(
+            "HTTP " +
+            response.status
+        );
+    }
+
+
+    return await response.json();
+}
+
+
+// ============================================================
+// NOTICE
+// ============================================================
+
+function showNotice(
+    message,
+    duration = 5000
+) {
+
+    const box =
+        document.getElementById(
+            "notice"
+        );
+
+
+    box.textContent =
+        message;
+
+
+    box.classList.add(
+        "show"
+    );
+
+
+    if (duration > 0) {
+
+        setTimeout(
+            () => {
+
+                box.classList.remove(
+                    "show"
+                );
+
+            },
+            duration
+        );
+    }
+}
+
+
+// ============================================================
+// AGENT STATUS
+// ============================================================
+
+async function checkAgent() {
+
+    try {
+
+        const data =
+            await api(
+                "/agent/status"
+            );
+
+
+        if (data.online) {
+
+            document
+                .getElementById(
+                    "statusDot"
+                )
+                .classList.add(
+                    "online"
+                );
+
+
+            document
+                .getElementById(
+                    "agentStatus"
+                )
+                .textContent =
+                    "Agent Online";
+
+
+            return true;
+        }
+
+    }
+    catch {
+
+    }
+
+
+    document
+        .getElementById(
+            "statusDot"
+        )
+        .classList.remove(
+            "online"
+        );
+
+
+    document
+        .getElementById(
+            "agentStatus"
+        )
+        .textContent =
+            "Agent Offline";
+
+
+    return false;
+}
+
+
+// ============================================================
+// WAIT FOR AGENT
+// ============================================================
+
+async function waitForAgent(
+    timeout = 12000
+) {
+
+    const started =
+        Date.now();
+
+
+    while (
+        Date.now() - started <
+        timeout
+    ) {
+
+        if (
+            await checkAgent()
+        ) {
+
+            return true;
+        }
+
+
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    300
+                )
+        );
+    }
+
+
+    return false;
+}
+
+
+// ============================================================
+// WAIT FOR AGENT OFFLINE
+// ============================================================
+
+async function waitForAgentOffline(
+    timeout = 8000
+) {
+
+    const started =
+        Date.now();
+
+
+    while (
+        Date.now() - started <
+        timeout
+    ) {
+
+        const online =
+            await checkAgent();
+
+
+        if (!online) {
+
+            return true;
+        }
+
+
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    300
+                )
+        );
+    }
+
+
+    return false;
+}
+
+
+// ============================================================
+// START NEW JOB
+// ============================================================
+
+async function startNewJob() {
+
+    if (currentJob) {
+
+        showNotice(
+            "A job is already active."
+        );
+
+        return;
+    }
+
+
+    const button =
+        document.getElementById(
+            "startButton"
+        );
+
+
+    button.disabled =
+        true;
+
+
+    try {
+
+        let online =
+            await checkAgent();
+
+
+        if (!online) {
+
+            showNotice(
+                "Starting local diagnostic agent...",
+                12000
+            );
+
+
+            try {
+
+                window.location.href =
+                    "itdiag://start";
+
+            }
+            catch {
+
+            }
+
+
+            online =
+                await waitForAgent(
+                    12000
+                );
+
+
+            if (!online) {
+
+                throw new Error(
+                    "Local agent did not start. Please allow the itdiag:// protocol when Windows asks."
+                );
+            }
+        }
+
+
+        showNotice(
+            "Agent online. Starting diagnostic job..."
+        );
+
+
+        const result =
+            await api(
+                "/job/start",
+                {
+                    method: "POST"
+                }
+            );
+
+
+        if (!result.success) {
+
+            throw new Error(
+                result.message ||
+                "Unable to start job."
+            );
+        }
+
+
+        currentJob =
+            result.job;
+
+
+        lastReport =
+            null;
+
+
+        lastReportJobId =
+            null;
+
+
+        clearReportUI();
+
+
+        document
+            .getElementById(
+                "dashboard"
+            )
+            .classList.remove(
+                "section-hidden"
+            );
+
+
+        document
+            .getElementById(
+                "endButton"
+            )
+            .disabled =
+                false;
+
+
+        updateJobDisplay();
+
+
+        showNotice(
+            "Job started: " +
+            currentJob.id,
+            6000
+        );
+
+
+        await refreshAll();
+
+
+        startAutoRefresh();
+
+    }
+    catch (error) {
+
+        showNotice(
+            "Unable to start job: " +
+            error.message,
+            9000
+        );
+
+    }
+    finally {
+
+        button.disabled =
+            false;
+    }
+}
+
+
+// ============================================================
+// UPDATE JOB DISPLAY
+// ============================================================
+
+function updateJobDisplay() {
+
+    if (!currentJob) {
+
+        return;
+    }
+
+
+    document
+        .getElementById(
+            "jobId"
+        )
+        .textContent =
+            currentJob.id ||
+            "-";
+
+
+    document
+        .getElementById(
+            "jobComputer"
+        )
+        .textContent =
+            currentJob.computer ||
+            "-";
+
+
+    document
+        .getElementById(
+            "jobStarted"
+        )
+        .textContent =
+            currentJob.startedAt ||
+            "-";
+
+
+    document
+        .getElementById(
+            "jobStatus"
+        )
+        .innerHTML =
+            '<span class="badge badge-active">ACTIVE</span>';
+}
+
+
+// ============================================================
+// END JOB
+// ============================================================
+
+async function endJob() {
+
+    if (!currentJob) {
+
+        showNotice(
+            "There is no active job."
+        );
+
+        return;
+    }
+
+
+    const confirmed =
+        confirm(
+            "End this diagnostic job and generate the report?"
+        );
+
+
+    if (!confirmed) {
+
+        return;
+    }
+
+
+    const endButton =
+        document.getElementById(
+            "endButton"
+        );
+
+
+    const startButton =
+        document.getElementById(
+            "startButton"
+        );
+
+
+    const stopButton =
+        document.getElementById(
+            "stopAgentButton"
+        );
+
+
+    endButton.disabled =
+        true;
+
+    startButton.disabled =
+        true;
+
+    stopButton.disabled =
+        true;
+
+
+    try {
+
+        showNotice(
+            "Ending job and preparing report...",
+            15000
+        );
+
+
+        const result =
+            await api(
+                "/job/end",
+                {
+                    method: "POST"
+                }
+            );
+
+
+        if (!result.success) {
+
+            throw new Error(
+                result.message ||
+                "Unable to end job."
+            );
+        }
+
+
+        const endedJobId =
+            result.job &&
+            result.job.id
+                ? result.job.id
+                : null;
+
+
+        currentJob =
+            null;
+
+
+        lastReport =
+            result.report ||
+            null;
+
+
+        stopAutoRefresh();
+
+
+        document
+            .getElementById(
+                "dashboard"
+            )
+            .classList.add(
+                "section-hidden"
+            );
+
+
+        document
+            .getElementById(
+                "reportPath"
+            )
+            .textContent =
+                result.report ||
+                "Report is being generated.";
+
+
+        document
+            .getElementById(
+                "reportBox"
+            )
+            .classList.add(
+                "show"
+            );
+
+
+        await refreshHistory();
+
+
+        showNotice(
+            "Job ended. Waiting for report...",
+            12000
+        );
+
+
+        // ----------------------------------------------------
+        // WAIT FOR REAL REPORT FILE
+        // ----------------------------------------------------
+
+        if (endedJobId) {
+
+            const reportReady =
+                await waitForReport(
+                    endedJobId,
+                    30000
+                );
+
+
+            if (reportReady) {
+
+                lastReport =
+                    reportReady.report ||
+                    lastReport;
+
+
+                document
+                    .getElementById(
+                        "reportPath"
+                    )
+                    .textContent =
+                        lastReport ||
+                        "Report ready.";
+
+
+                showNotice(
+                    "Report is ready.",
+                    5000
+                );
+
+            }
+            else {
+
+                showNotice(
+                    "Report is still being generated.",
+                    8000
+                );
+            }
+        }
+
+
+        // ----------------------------------------------------
+        // STOP AGENT
+        // ----------------------------------------------------
+
+        await stopAgent(
+            true
+        );
+
+
+    }
+    catch (error) {
+
+        endButton.disabled =
+            false;
+
+        startButton.disabled =
+            false;
+
+        stopButton.disabled =
+            false;
+
+
+        showNotice(
+            "Unable to end job: " +
+            error.message,
+            10000
+        );
+    }
+}
+
+
+// ============================================================
+// WAIT FOR REPORT
+// ============================================================
+
+async function waitForReport(
+    jobId,
+    timeout = 30000
+) {
+
+    const started =
+        Date.now();
+
+
+    while (
+        Date.now() - started <
+        timeout
+    ) {
+
+        try {
+
+            const result =
+                await api(
+                    "/report/status?jobId=" +
+                    encodeURIComponent(
+                        jobId
+                    )
+                );
+
+
+            if (
+                result.ready &&
+                result.report
+            ) {
+
+                return result;
+            }
+
+        }
+        catch {
+
+        }
+
+
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    700
+                )
+        );
+    }
+
+
+    return null;
+}
+
+// ============================================================
+// STOP AGENT
+// ============================================================
+
+async function stopAgent(
+    silent = false
+) {
+
+    const stopButton =
+        document.getElementById(
+            "stopAgentButton"
+        );
+
+
+    const startButton =
+        document.getElementById(
+            "startButton"
+        );
+
+
+    const endButton =
+        document.getElementById(
+            "endButton"
+        );
+
+
+    if (
+        !silent &&
+        currentJob
+    ) {
+
+        showNotice(
+            "End the active job before stopping the agent."
+        );
+
+        return false;
+    }
+
+
+    if (stopButton) {
+
+        stopButton.disabled =
+            true;
+    }
+
+
+    try {
+
+        const online =
+            await checkAgent();
+
+
+        if (!online) {
+
+            if (!silent) {
+
+                showNotice(
+                    "Agent is already offline.",
+                    4000
+                );
+            }
+
+            return true;
+        }
+
+
+        if (!silent) {
+
+            const confirmed =
+                confirm(
+                    "Stop the local diagnostic agent?"
+                );
+
+
+            if (!confirmed) {
+
+                if (stopButton) {
+
+                    stopButton.disabled =
+                        false;
+                }
+
+                return false;
+            }
+        }
+
+
+        if (!silent) {
+
+            showNotice(
+                "Stopping local diagnostic agent...",
+                8000
+            );
+        }
+
+
+        try {
+
+            await api(
+                "/agent/stop",
+                {
+                    method: "POST"
+                }
+            );
+
+        }
+        catch {
+
+            // The agent may close immediately
+            // after sending the response.
+        }
+
+
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    1500
+                )
+        );
+
+
+        await checkAgent();
+
+
+        if (!silent) {
+
+            showNotice(
+                "Agent stopped.",
+                5000
+            );
+        }
+
+
+        if (startButton) {
+
+            startButton.disabled =
+                false;
+        }
+
+
+        if (endButton) {
+
+            endButton.disabled =
+                true;
+        }
+
+
+        return true;
+
+    }
+    catch (error) {
+
+        if (!silent) {
+
+            showNotice(
+                "Unable to stop agent: " +
+                error.message,
+                8000
+            );
+        }
+
+
+        if (stopButton) {
+
+            stopButton.disabled =
+                false;
+        }
+
+
+        return false;
+    }
+}
+
+
+// ============================================================
+// OPEN REPORT
+// ============================================================
+
+async function openReport() {
+
+    if (!lastReport) {
+
+        showNotice(
+            "No report is available."
+        );
+
+        return;
+    }
+
+
+    try {
+
+        const jobId =
+            lastReport
+                .split("\\")
+                .pop()
+                .replace(
+                    ".html",
+                    ""
+                );
+
+
+        const result =
+            await api(
+                "/report/open?jobId=" +
+                encodeURIComponent(
+                    jobId
+                )
+            );
+
+
+        if (!result.success) {
+
+            throw new Error(
+                result.message ||
+                "Unable to open report."
+            );
+        }
+
+
+        showNotice(
+            "Report opened.",
+            4000
+        );
+
+    }
+    catch (error) {
+
+        showNotice(
+            "Unable to open report: " +
+            error.message,
+            8000
+        );
+    }
+}
+
+// ============================================================
+// INTERNAL STOP AGENT
+// ============================================================
+
+async function stopAgentInternal(
+    automatic
+) {
+
+    if (stoppingAgent) {
+
+        return;
+    }
+
+
+    stoppingAgent =
+        true;
+
+
+    const stopButton =
+        document.getElementById(
+            "stopButton"
+        );
+
+
+    const startButton =
+        document.getElementById(
+            "startButton"
+        );
+
+
+    stopButton.disabled =
+        true;
+
+
+    startButton.disabled =
+        true;
+
+
+    try {
+
+        if (automatic) {
+
+            showNotice(
+                "Report ready. Stopping local Agent...",
+                8000
+            );
+
+        }
+        else {
+
+            showNotice(
+                "Stopping local Agent...",
+                8000
+            );
+        }
+
+
+        try {
+
+            await api(
+                "/agent/stop",
+                {
+                    method: "POST"
+                }
+            );
+
+        }
+        catch {
+
+            /*
+             * The Agent may close immediately
+             * after sending its response.
+             */
+        }
+
+
+        const offline =
+            await waitForAgentOffline(
+                8000
+            );
+
+
+        if (offline) {
+
+            showNotice(
+                "Agent stopped. Portal is ready.",
+                6000
+            );
+
+        }
+        else {
+
+            showNotice(
+                "Stop command was sent, but Agent is still online.",
+                8000
+            );
+        }
+
+    }
+    catch (error) {
+
+        showNotice(
+            "Unable to stop Agent: " +
+            error.message,
+            8000
+        );
+
+    }
+    finally {
+
+        stoppingAgent =
+            false;
+
+
+        stopButton.disabled =
+            false;
+
+
+        startButton.disabled =
+            false;
+    }
+}
+
+
+// ============================================================
+// CLEAR REPORT UI
+// ============================================================
+
+function clearReportUI() {
+
+    document
+        .getElementById(
+            "reportBox"
+        )
+        .classList.remove(
+            "show"
+        );
+
+
+    document
+        .getElementById(
+            "reportPath"
+        )
+        .textContent =
+            "";
+
+
+    document
+        .getElementById(
+            "reportStatus"
+        )
+        .textContent =
+            "";
+
+
+    document
+        .getElementById(
+            "openReportButton"
+        )
+        .disabled =
+            true;
+}
+
+
+// ============================================================
+// SYSTEM
+// ============================================================
+
+async function refreshSystem() {
+
+    try {
+
+        const result =
+            await api(
+                "/system"
+            );
+
+
+        const data =
+            result.data ||
+            {};
+
+
+        document
+            .getElementById(
+                "systemComputer"
+            )
+            .textContent =
+                data.computerName ||
+                "-";
+
+
+        document
+            .getElementById(
+                "systemUser"
+            )
+            .textContent =
+                data.userName ||
+                "-";
+
+
+        document
+            .getElementById(
+                "systemManufacturer"
+            )
+            .textContent =
+                data.manufacturer ||
+                "-";
+
+
+        document
+            .getElementById(
+                "systemModel"
+            )
+            .textContent =
+                data.model ||
+                "-";
+
+
+        document
+            .getElementById(
+                "systemWindows"
+            )
+            .textContent =
+                data.windows ||
+                "-";
+
+
+        document
+            .getElementById(
+                "systemBuild"
+            )
+            .textContent =
+                data.build ||
+                "-";
+
+
+        document
+            .getElementById(
+                "systemArchitecture"
+            )
+            .textContent =
+                data.architecture ||
+                "-";
+
+
+        document
+            .getElementById(
+                "systemMemory"
+            )
+            .textContent =
+                (
+                    data.memoryGB ||
+                    0
+                ) +
+                " GB";
+
+    }
+    catch {
+
+    }
+}
+
+
+// ============================================================
+// METRICS
+// ============================================================
+
+async function refreshMetrics() {
+
+    try {
+
+        const result =
+            await api(
+                "/metrics"
+            );
+
+
+        const data =
+            result.data ||
+            {};
+
+
+        document
+            .getElementById(
+                "cpu"
+            )
+            .textContent =
+                (
+                    data.cpu ??
+                    0
+                ) +
+                "%";
+
+
+        document
+            .getElementById(
+                "ram"
+            )
+            .textContent =
+                (
+                    data.ram ??
+                    0
+                ) +
+                "%";
+
+
+        document
+            .getElementById(
+                "disk"
+            )
+            .textContent =
+                (
+                    data.disk ??
+                    0
+                ) +
+                "%";
+
+
+        document
+            .getElementById(
+                "ramFree"
+            )
+            .textContent =
+                (
+                    data.ramFreeGB ??
+                    0
+                ) +
+                " GB";
+
+
+        document
+            .getElementById(
+                "diskFree"
+            )
+            .textContent =
+                (
+                    data.diskFreeGB ??
+                    0
+                ) +
+                " GB";
+
+    }
+    catch {
+
+    }
+}
+
+
+// ============================================================
+// DIAGNOSTICS
+// ============================================================
+
+async function refreshDiagnostics() {
+
+    try {
+
+        const result =
+            await api(
+                "/diagnose"
+            );
+
+
+        const data =
+            result.data ||
+            {};
+
+
+        document
+            .getElementById(
+                "health"
+            )
+            .textContent =
+                (
+                    data.health ??
+                    0
+                ) +
+                " / 100";
+
+
+        const box =
+            document.getElementById(
+                "diagnostics"
+            );
+
+
+        const problems =
+            data.problems ||
+            [];
+
+
+        if (
+            problems.length === 0
+        ) {
+
+            box.innerHTML =
+                '<div class="badge">NO DETECTED PROBLEMS</div>';
+
+            return;
+        }
+
+
+        box.innerHTML =
+            problems
+                .map(
+                    problem => `
+
+<div
+    style="
+        padding:14px;
+        border-bottom:1px solid #334155;
+    ">
+
+<strong>
+${escapeHtml(
+    problem.title ||
+    "Problem"
+)}
+</strong>
+
+<div
+    class="muted"
+    style="margin-top:5px;">
+
+Severity:
+${escapeHtml(
+    problem.severity ||
+    ""
+)}
+
+</div>
+
+<div style="margin-top:8px;">
+
+${escapeHtml(
+    problem.description ||
+    ""
+)}
+
+</div>
+
+<div
+    class="muted"
+    style="margin-top:8px;">
+
+Recommended Fix:
+${escapeHtml(
+    problem.recommendedFix ||
+    ""
+)}
+
+</div>
+
+</div>
+
+`
+                )
+                .join("");
+
+    }
+    catch {
+
+        document
+            .getElementById(
+                "diagnostics"
+            )
+            .textContent =
+                "Unable to load diagnostics.";
+    }
+}
+
+
+// ============================================================
+// NETWORK
+// ============================================================
+
+async function refreshNetwork() {
+
+    try {
+
+        const result =
+            await api(
+                "/network"
+            );
+
+
+        const data =
+            result.data ||
+            {};
+
+
+        document
+            .getElementById(
+                "networkStatus"
+            )
+            .textContent =
+                data.internet
+                    ? "🌐 Internet: ONLINE"
+                    : "⚠️ Internet: OFFLINE";
+
+
+        const table =
+            document.getElementById(
+                "networkTable"
+            );
+
+
+        table.innerHTML =
+            "";
+
+
+        for (
+            const item
+            of data.adapters ||
+            []
+        ) {
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+
+            row.innerHTML = `
+
+<td>
+${escapeHtml(
+    item.interface ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.ipv4 ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.gateway ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.dns ||
+    ""
+)}
+</td>
+
+`;
+
+
+            table.appendChild(
+                row
+            );
+        }
+
+    }
+    catch {
+
+    }
+}
+
+
+// ============================================================
+// SERVICES
+// ============================================================
+
+async function refreshServices() {
+
+    try {
+
+        const result =
+            await api(
+                "/services"
+            );
+
+
+        const table =
+            document.getElementById(
+                "servicesTable"
+            );
+
+
+        table.innerHTML =
+            "";
+
+
+        for (
+            const item
+            of result.data ||
+            []
+        ) {
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+
+            row.innerHTML = `
+
+<td>
+${escapeHtml(
+    item.name ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.displayName ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.status ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.startType ||
+    ""
+)}
+</td>
+
+`;
+
+
+            table.appendChild(
+                row
+            );
+        }
+
+    }
+    catch {
+
+    }
+}
+
+
+// ============================================================
+// PROCESSES
+// ============================================================
+
+async function refreshProcesses() {
+
+    try {
+
+        const result =
+            await api(
+                "/processes"
+            );
+
+
+        const table =
+            document.getElementById(
+                "processesTable"
+            );
+
+
+        table.innerHTML =
+            "";
+
+
+        for (
+            const item
+            of result.data ||
+            []
+        ) {
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+
+            row.innerHTML = `
+
+<td>
+${escapeHtml(
+    String(
+        item.id ??
+        ""
+    )
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.name ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    String(
+        item.cpu ??
+        0
+    )
+)}
+</td>
+
+<td>
+${escapeHtml(
+    String(
+        item.memoryMB ??
+        0
+    )
+)} MB
+</td>
+
+<td>
+
+<button
+    class="small-button"
+    onclick="killProcess(${Number(
+        item.id
+    )})">
+
+Kill
+
+</button>
+
+</td>
+
+`;
+
+
+            table.appendChild(
+                row
+            );
+        }
+
+    }
+    catch {
+
+    }
+}
+
+
+// ============================================================
+// KILL PROCESS
+// ============================================================
+
+async function killProcess(
+    pid
+) {
+
+    if (
+        !Number.isInteger(
+            Number(pid)
+        )
+    ) {
+
+        showNotice(
+            "Invalid process ID."
+        );
+
+        return;
+    }
+
+
+    if (
+        Number(pid) === 4
+    ) {
+
+        showNotice(
+            "PID 4 is protected and cannot be terminated.",
+            7000
+        );
+
+        return;
+    }
+
+
+    const confirmed =
+        confirm(
+            "Terminate process PID " +
+            pid +
+            "?"
+        );
+
+
+    if (!confirmed) {
+
+        return;
+    }
+
+
+    try {
+
+        const result =
+            await api(
+                "/kill",
+                {
+                    method: "POST",
+
+                    body:
+                        JSON.stringify({
+                            pid:
+                                Number(pid)
+                        })
+                }
+            );
+
+
+        showNotice(
+            result.message ||
+            "Process action completed.",
+            5000
+        );
+
+
+        await refreshProcesses();
+
+    }
+    catch (error) {
+
+        showNotice(
+            "Process action failed: " +
+            error.message,
+            7000
+        );
+    }
+}
+
+
+// ============================================================
+// EVENTS
+// ============================================================
+
+async function refreshEvents() {
+
+    try {
+
+        const result =
+            await api(
+                "/events"
+            );
+
+
+        const table =
+            document.getElementById(
+                "eventsTable"
+            );
+
+
+        table.innerHTML =
+            "";
+
+
+        for (
+            const item
+            of result.data ||
+            []
+        ) {
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+
+            row.innerHTML = `
+
+<td>
+${escapeHtml(
+    item.time ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    String(
+        item.id ??
+        ""
+    )
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.provider ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.level ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.message ||
+    ""
+)}
+</td>
+
+`;
+
+
+            table.appendChild(
+                row
+            );
+        }
+
+    }
+    catch {
+
+    }
+}
+
+
+// ============================================================
+// HISTORY
+// ============================================================
+
+async function refreshHistory() {
+
+    try {
+
+        const result =
+            await api(
+                "/history"
+            );
+
+
+        const table =
+            document.getElementById(
+                "historyTable"
+            );
+
+
+        table.innerHTML =
+            "";
+
+
+        const history =
+            result.data ||
+            [];
+
+
+        for (
+            const item
+            of history
+                .slice()
+                .reverse()
+        ) {
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+
+            const status =
+                item.status ||
+                "";
+
+
+            let badge =
+                "";
+
+
+            if (
+                status ===
+                "ACTIVE"
+            ) {
+
+                badge =
+                    '<span class="badge badge-active">ACTIVE</span>';
+
+            }
+            else if (
+                status ===
+                "COMPLETED"
+            ) {
+
+                badge =
+                    '<span class="badge badge-completed">COMPLETED</span>';
+            }
+
+
+            row.innerHTML = `
+
+<td>
+${escapeHtml(
+    item.id ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.computer ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.startedAt ||
+    ""
+)}
+</td>
+
+<td>
+${escapeHtml(
+    item.endedAt ||
+    ""
+)}
+${badge}
+</td>
+
+`;
+
+
+            table.appendChild(
+                row
+            );
+        }
+
+    }
+    catch {
+
+    }
+}
+
+
+// ============================================================
+// CURRENT JOB STATUS
+// ============================================================
+
+async function refreshJobStatus() {
+
+    try {
+
+        const result =
+            await api(
+                "/job/status"
+            );
+
+
+        if (
+            result.success &&
+            result.job &&
+            result.job.status ===
+                "ACTIVE"
+        ) {
+
+            currentJob =
+                result.job;
+
+
+            document
+                .getElementById(
+                    "dashboard"
+                )
+                .classList.remove(
+                    "section-hidden"
+                );
+
+
+            document
+                .getElementById(
+                    "endButton"
+                )
+                .disabled =
+                    false;
+
+
+            updateJobDisplay();
+
+
+            return true;
+        }
+
+
+        return false;
+
+    }
+    catch {
+
+        return false;
+    }
+}
+
+
+// ============================================================
+// REFRESH ALL
+// ============================================================
+
+async function refreshAll() {
+
+    const online =
+        await checkAgent();
+
+
+    if (!online) {
+
+        return;
+    }
+
+
+    await refreshJobStatus();
+
+
+    await Promise.all([
+
+        refreshSystem(),
+
+        refreshMetrics(),
+
+        refreshDiagnostics(),
+
+        refreshNetwork(),
+
+        refreshServices(),
+
+        refreshProcesses(),
+
+        refreshEvents(),
+
+        refreshHistory()
+
+    ]);
+}
+
+
+// ============================================================
+// AUTO REFRESH
+// ============================================================
+
+function startAutoRefresh() {
+
+    stopAutoRefresh();
+
+
+    refreshTimer =
+        setInterval(
+            async () => {
+
+                if (
+                    !currentJob
+                ) {
+
+                    return;
+                }
+
+
+                /*
+                 * Do not call checkAgent()
+                 * unnecessarily while the job
+                 * is active.
+                 */
+
+                await Promise.all([
+
+                    refreshMetrics(),
+
+                    refreshDiagnostics(),
+
+                    refreshNetwork(),
+
+                    refreshServices(),
+
+                    refreshProcesses(),
+
+                    refreshEvents()
+
+                ]);
+
+            },
+            5000
+        );
+}
+
+
+function stopAutoRefresh() {
+
+    if (
+        refreshTimer
+    ) {
+
+        clearInterval(
+            refreshTimer
+        );
+
+        refreshTimer =
+            null;
+    }
+}
+
+
+// ============================================================
+// HTML ESCAPE
+// ============================================================
+
+function escapeHtml(
+    value
+) {
+
+    return String(
+        value ??
+        ""
+    )
+    .replaceAll(
+        "&",
+        "&amp;"
+    )
+    .replaceAll(
+        "<",
+        "&lt;"
+    )
+    .replaceAll(
+        ">",
+        "&gt;"
+    )
+    .replaceAll(
+        '"',
+        "&quot;"
+    )
+    .replaceAll(
+        "'",
+        "&#039;"
+    );
+}
+
+
+// ============================================================
+// INITIALIZE
+// ============================================================
+
+(async function init() {
+
+    await checkAgent();
+
+    const active =
+        await refreshJobStatus();
+
+    await refreshHistory();
+
+
+    if (
+        active
+    ) {
+
+        await refreshAll();
+
+        startAutoRefresh();
+
+    }
+
+})();
+
+
+</script>
+
+</body>
+
+</html>
