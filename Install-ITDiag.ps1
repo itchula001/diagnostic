@@ -1,175 +1,122 @@
 # ============================================================
-# IT FIELD DIAGNOSTIC PORTAL V5
-# Install Custom URL Protocol
+# IT DIAG PROTOCOL INSTALLER V5.1
 # ============================================================
 
 $ErrorActionPreference = "Stop"
 
-# ------------------------------------------------------------
-# Paths
-# ------------------------------------------------------------
-
 $BaseDir =
-    Split-Path -Parent $MyInvocation.MyCommand.Path
+    Split-Path `
+        -Parent `
+        $MyInvocation.MyCommand.Path
 
 $Launcher =
-    Join-Path $BaseDir "Start-ITDiag.ps1"
-
-# ------------------------------------------------------------
-# Verify Launcher
-# ------------------------------------------------------------
+    Join-Path `
+        $BaseDir `
+        "Start-ITDiag.ps1"
 
 if (-not (Test-Path $Launcher)) {
 
     Write-Host ""
-    Write-Host "ERROR: Start-ITDiag.ps1 not found." `
+    Write-Host "Start-ITDiag.ps1 not found." `
         -ForegroundColor Red
-
-    Write-Host ""
-    Write-Host "Expected:"
     Write-Host $Launcher
-
     Write-Host ""
 
     exit 1
 }
 
 # ------------------------------------------------------------
-# Registry path
+# PowerShell launcher command
 # ------------------------------------------------------------
 
-$ProtocolKey =
+$command =
+    "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$Launcher`""
+
+# ------------------------------------------------------------
+# Registry
+# ------------------------------------------------------------
+
+$protocolRoot =
     "HKCU:\Software\Classes\itdiag"
 
-$CommandKey =
-    "HKCU:\Software\Classes\itdiag\shell\open\command"
-
-# ------------------------------------------------------------
-# Create protocol
-# ------------------------------------------------------------
-
-Write-Host ""
-Write-Host "============================================" `
-    -ForegroundColor Cyan
-
-Write-Host " IT FIELD DIAGNOSTIC PORTAL V5" `
-    -ForegroundColor Cyan
-
-Write-Host " Installing itdiag:// protocol" `
-    -ForegroundColor Cyan
-
-Write-Host "============================================" `
-    -ForegroundColor Cyan
-
-Write-Host ""
-
-# ------------------------------------------------------------
-# Root key
-# ------------------------------------------------------------
+$commandRoot =
+    "$protocolRoot\shell\open\command"
 
 New-Item `
-    -Path $ProtocolKey `
+    -Path $protocolRoot `
     -Force |
     Out-Null
 
-# ------------------------------------------------------------
-# Protocol description
-# ------------------------------------------------------------
+New-Item `
+    -Path "$protocolRoot\shell" `
+    -Force |
+    Out-Null
+
+New-Item `
+    -Path "$protocolRoot\shell\open" `
+    -Force |
+    Out-Null
+
+New-Item `
+    -Path $commandRoot `
+    -Force |
+    Out-Null
 
 Set-ItemProperty `
-    -Path $ProtocolKey `
+    -Path $protocolRoot `
     -Name "(Default)" `
     -Value "URL:IT Diagnostic Protocol"
 
-Set-ItemProperty `
-    -Path $ProtocolKey `
+New-ItemProperty `
+    -Path $protocolRoot `
     -Name "URL Protocol" `
-    -Value ""
-
-# ------------------------------------------------------------
-# shell\open\command
-# ------------------------------------------------------------
-
-New-Item `
-    -Path $CommandKey `
+    -Value "" `
+    -PropertyType String `
     -Force |
     Out-Null
 
-# ------------------------------------------------------------
-# Command
-# ------------------------------------------------------------
-
-$PowerShellPath =
-    Join-Path $env:SystemRoot `
-        "System32\WindowsPowerShell\v1.0\powershell.exe"
-
-$Command =
-    "`"$PowerShellPath`" -NoProfile -ExecutionPolicy Bypass -File `"$Launcher`""
-
 Set-ItemProperty `
-    -Path $CommandKey `
+    -Path $commandRoot `
     -Name "(Default)" `
-    -Value $Command
-
-# ------------------------------------------------------------
-# Success
-# ------------------------------------------------------------
+    -Value $command
 
 Write-Host ""
-Write-Host "SUCCESS" `
+Write-Host "============================================" `
     -ForegroundColor Green
-
+Write-Host " IT DIAG PROTOCOL INSTALLED" `
+    -ForegroundColor Green
+Write-Host "============================================" `
+    -ForegroundColor Green
 Write-Host ""
-Write-Host "Protocol:"
-Write-Host "itdiag://start"
-
+Write-Host "Protocol: itdiag://start"
 Write-Host ""
-
 Write-Host "Launcher:"
 Write-Host $Launcher
-
-Write-Host ""
-
-Write-Host "Registry:"
-Write-Host $ProtocolKey
-
-Write-Host ""
-
-Write-Host "============================================" `
-    -ForegroundColor Green
-
-Write-Host " Installation completed." `
-    -ForegroundColor Green
-
-Write-Host "============================================" `
-    -ForegroundColor Green
-
 Write-Host ""
 
 # ------------------------------------------------------------
-# Test URL
+# Test registry
 # ------------------------------------------------------------
 
-Write-Host "Testing protocol..." `
-    -ForegroundColor Yellow
+$value =
+    Get-ItemProperty `
+        -Path $commandRoot `
+        -Name "(Default)"
 
-try {
+if ($value."(Default)") {
 
-    Start-Process "itdiag://start"
-
-    Write-Host ""
-    Write-Host "Protocol launch requested." `
+    Write-Host "Registry registration: OK" `
         -ForegroundColor Green
 
 }
-catch {
+else {
 
-    Write-Host ""
-    Write-Host "Protocol test failed:" `
+    Write-Host "Registry registration: FAILED" `
         -ForegroundColor Red
 
-    Write-Host $_.Exception.Message `
-        -ForegroundColor Red
+    exit 1
 }
 
+Write-Host ""
+Write-Host "Installation complete."
 Write-Host ""

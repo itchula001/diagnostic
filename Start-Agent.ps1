@@ -1,195 +1,742 @@
 # ============================================================
-# IT FIELD DIAGNOSTIC PORTAL V5
-# START-AGENT.PS1
-# Version: 5.1
+# IT FIELD DIAGNOSTIC AGENT V5.1
 # ============================================================
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = "SilentlyContinue"
 
-$AgentVersion = "5.1"
-$AgentName    = "IT Diagnostic Agent V5.1"
-$AgentPort    = 8765
-$AgentPrefix  = "http://127.0.0.1:8765/"
+$AgentUrl = "http://127.0.0.1:8765/"
+$AgentTempDir = Join-Path $env:TEMP "ITDiagV5"
+$AgentDataDir = Join-Path $env:LOCALAPPDATA "ITDiagV5"
+$HistoryFile = Join-Path $AgentDataDir "history.json"
+$ReportDir = Join-Path ([Environment]::GetFolderPath("Desktop")) "ITDiag-Reports"
 
-$BaseDir      = Split-Path -Parent $MyInvocation.MyCommand.Path
-$DataDir      = Join-Path $BaseDir "data"
-$TempDir      = Join-Path $env:TEMP "ITDiagV5"
-$ReportDir    = Join-Path $env:USERPROFILE "Desktop\ITDiag-Reports"
-
-$CurrentJobFile = Join-Path $DataDir "current-job.json"
-$HistoryFile    = Join-Path $DataDir "job-history.json"
-
-New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
-New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
+New-Item -ItemType Directory -Force -Path $AgentTempDir | Out-Null
+New-Item -ItemType Directory -Force -Path $AgentDataDir | Out-Null
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
-
 
 # ============================================================
 # GLOBAL STATE
 # ============================================================
 
 $global:CurrentJob = $null
-$global:StopRequested = $false
+$global:History = @()
 
-
-# ============================================================
-# BASIC FUNCTIONS
-# ============================================================
-
-function Get-TimeStamp {
-    return (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-}
-
-function New-JobId {
-    return "JOB-" + (Get-Date).ToString("yyyyMMdd-HHmmss")
-}
-
-function Convert-ToJsonSafe {
-    param(
-        [Parameter(Mandatory = $false)]
-        $Object
-    )
-
-    if ($null -eq $Object) {
-        return "null"
-    }
-
-    return ($Object | ConvertTo-Json -Depth 20 -Compress)
-}
-
-function HtmlEncode {
-    param(
-        [Parameter(Mandatory = $false)]
-        $Value
-    )
-
-    if ($null -eq $Value) {
-        return ""
-    }
-
-    return [System.Net.WebUtility]::HtmlEncode(
-        [string]$Value
-    )
-}
-
-
-# ============================================================
-# JSON FILE HELPERS
-# ============================================================
-
-function Save-JsonFile {
-    param(
-        [string]$Path,
-        $Object
-    )
-
+if (Test-Path $HistoryFile) {
     try {
-        $json = $Object | ConvertTo-Json -Depth 30
-        [System.IO.File]::WriteAllText(
-            $Path,
-            $json,
-            [System.Text.Encoding]::UTF8
-        )
-        return $true
+        $raw = Get-Content $HistoryFile -Raw
+        if (-not [string]::IsNullOrWhiteSpace($raw)) {
+            $parsed = $raw | ConvertFrom-Json
+            if ($null -ne $parsed) {
+                $global:History = @($parsed)
+            }
+        }
     }
     catch {
-        return $false
+        $global:History = @()
     }
 }
 
-function Read-JsonFile {
-    param(
-        [string]$Path
-    )
+# ============================================================
+# SAVE HISTORY
+# ============================================================
 
-    if (-not (Test-Path $Path)) {
-        return $null
-    }
+function Save-History {
 
     try {
-        $raw = Get-Content -Path $Path -Raw -Encoding UTF8
 
-        if ([string]::IsNullOrWhiteSpace($raw)) {
+        $global:History |
+            ConvertTo-Json -Depth 10 |
+            Set-Content `
+                -Path $HistoryFile `
+                -Encoding UTF8
+
+    }
+    catch {
+    }
+}
+
+# ============================================================
+# JSON RESPONSE
+# ============================================================
+
+function Send-JsonResponse {
+
+    param(
+        $Context,
+        $Data,
+        [int]$StatusCode = 200
+    )
+
+    try {
+
+        $json =
+            $Data |
+            ConvertTo-Json -Depth 20 -Compress
+
+        $bytes =
+            [System.Text.Encoding]::UTF8.GetBytes($json)
+
+        $response =
+            $Context.Response
+
+        $response.StatusCode =
+            $StatusCode
+
+        $response.ContentType =
+            "application/json; charset=utf-8"
+
+        $response.ContentEncoding =
+            [System.Text.Encoding]::UTF8
+
+        $response.ContentLength64 =
+            $bytes.Length
+
+        $response.OutputStream.Write(
+            $bytes,
+            0,
+            $bytes.Length
+        )
+
+        $response.OutputStream.Close()
+
+    }
+    catch {
+    }
+}
+
+# ============================================================
+# READ REQUEST BODY
+# ============================================================
+
+function Read-RequestBody {
+
+    param(
+        $Request
+    )
+
+    try {
+
+        $reader =
+            New-Object System.IO.StreamReader(
+                $Request.InputStream,
+                $Request.ContentEncoding
+            )
+
+        $body =
+            $reader.ReadToEnd()
+
+        $reader.Close()
+
+        if ([string]::IsNullOrWhiteSpace($body)) {
             return $null
         }
 
-        return ($raw | ConvertFrom-Json)
+        return (
+            $body | ConvertFrom-Json
+        )
+
     }
     catch {
+
         return $null
     }
 }
 
+# ============================================================
+# SYSTEM INFO
+# ============================================================
+
+function Get-SystemInfo {
+
+    try {
+
+        $os =
+            Get-CimInstance Win32_OperatingSystem
+
+        $computer =
+            Get-CimInstance Win32_ComputerSystem
+
+        $bios =
+            Get-CimInstance Win32_BIOS
+
+        return [PSCustomObject]@{
+
+            computer =
+                $env:COMPUTERNAME
+
+            user =
+                $env:USERNAME
+
+            manufacturer =
+                $computer.Manufacturer
+
+            model =
+                $computer.Model
+
+            windows =
+                $os.Caption
+
+            build =
+                $os.BuildNumber
+
+            architecture =
+                $os.OSArchitecture
+
+            memoryGB =
+                [math]::Round(
+                    $computer.TotalPhysicalMemory / 1GB,
+                    2
+                )
+
+            serial =
+                $bios.SerialNumber
+        }
+
+    }
+    catch {
+
+        return [PSCustomObject]@{
+
+            computer = $env:COMPUTERNAME
+            user = $env:USERNAME
+            manufacturer = ""
+            model = ""
+            windows = ""
+            build = ""
+            architecture = ""
+            memoryGB = 0
+            serial = ""
+        }
+    }
+}
 
 # ============================================================
-# CURRENT JOB
+# METRICS
 # ============================================================
 
-function Save-CurrentJob {
-    if ($null -eq $global:CurrentJob) {
-        return
-    }
+function Get-Metrics {
 
-    Save-JsonFile -Path $CurrentJobFile -Object $global:CurrentJob | Out-Null
+    try {
+
+        $cpuData =
+            Get-CimInstance Win32_Processor
+
+        $cpu =
+            [math]::Round(
+                (
+                    $cpuData |
+                    Measure-Object LoadPercentage -Average
+                ).Average,
+                0
+            )
+
+        $os =
+            Get-CimInstance Win32_OperatingSystem
+
+        $totalRam =
+            [double]$os.TotalVisibleMemorySize
+
+        $freeRam =
+            [double]$os.FreePhysicalMemory
+
+        $ram =
+            if ($totalRam -gt 0) {
+                [math]::Round(
+                    (($totalRam - $freeRam) / $totalRam) * 100,
+                    0
+                )
+            }
+            else {
+                0
+            }
+
+        $ramFreeGB =
+            [math]::Round(
+                $freeRam / 1MB,
+                2
+            )
+
+        $disk =
+            Get-CimInstance Win32_LogicalDisk `
+                -Filter "DeviceID='C:'"
+
+        $diskUsage =
+            if ($disk.Size -gt 0) {
+                [math]::Round(
+                    (
+                        ($disk.Size - $disk.FreeSpace) /
+                        $disk.Size
+                    ) * 100,
+                    0
+                )
+            }
+            else {
+                0
+            }
+
+        $diskFreeGB =
+            [math]::Round(
+                $disk.FreeSpace / 1GB,
+                2
+            )
+
+        return [PSCustomObject]@{
+
+            cpu =
+                $cpu
+
+            ram =
+                $ram
+
+            ramFreeGB =
+                $ramFreeGB
+
+            disk =
+                $diskUsage
+
+            diskFreeGB =
+                $diskFreeGB
+        }
+
+    }
+    catch {
+
+        return [PSCustomObject]@{
+            cpu = 0
+            ram = 0
+            ramFreeGB = 0
+            disk = 0
+            diskFreeGB = 0
+        }
+    }
 }
-
-function Load-CurrentJob {
-
-    if (-not (Test-Path $CurrentJobFile)) {
-        $global:CurrentJob = $null
-        return
-    }
-
-    $job = Read-JsonFile -Path $CurrentJobFile
-
-    if ($null -eq $job) {
-        $global:CurrentJob = $null
-        return
-    }
-
-    if ($job.status -eq "ACTIVE") {
-        $global:CurrentJob = $job
-    }
-    else {
-        $global:CurrentJob = $null
-    }
-}
-
-function Get-History {
-
-    if (-not (Test-Path $HistoryFile)) {
-        return @()
-    }
-
-    $history = Read-JsonFile -Path $HistoryFile
-
-    if ($null -eq $history) {
-        return @()
-    }
-
-    if ($history -is [System.Array]) {
-        return @($history)
-    }
-
-    return @($history)
-}
-
-function Save-History {
-    param(
-        [array]$History
-    )
-
-    Save-JsonFile -Path $HistoryFile -Object $History | Out-Null
-}
-
 
 # ============================================================
-# JOB EVENTS
+# NETWORK
+# ============================================================
+
+function Get-NetworkInfo {
+
+    $adapters = @()
+
+    try {
+
+        $configs =
+            Get-CimInstance Win32_NetworkAdapterConfiguration `
+                -Filter "IPEnabled=True"
+
+        foreach ($item in $configs) {
+
+            $ipv4 = ""
+
+            if ($item.IPAddress) {
+
+                $ipv4 =
+                    @(
+                        $item.IPAddress |
+                        Where-Object {
+                            $_ -match "^\d+\.\d+\.\d+\.\d+$"
+                        }
+                    ) -join ", "
+            }
+
+            $gateway =
+                if ($item.DefaultIPGateway) {
+                    $item.DefaultIPGateway -join ", "
+                }
+                else {
+                    ""
+                }
+
+            $dns =
+                if ($item.DNSServerSearchOrder) {
+                    $item.DNSServerSearchOrder -join ", "
+                }
+                else {
+                    ""
+                }
+
+            $adapters +=
+                [PSCustomObject]@{
+
+                    interface =
+                        $item.Description
+
+                    ipv4 =
+                        $ipv4
+
+                    gateway =
+                        $gateway
+
+                    dns =
+                        $dns
+                }
+        }
+    }
+    catch {
+    }
+
+    $internet = $false
+
+    try {
+
+        $test =
+            Test-Connection `
+                -ComputerName "1.1.1.1" `
+                -Count 1 `
+                -Quiet `
+                -ErrorAction SilentlyContinue
+
+        $internet =
+            [bool]$test
+    }
+    catch {
+        $internet = $false
+    }
+
+    return [PSCustomObject]@{
+
+        internet =
+            $internet
+
+        adapters =
+            @($adapters)
+    }
+}
+
+# ============================================================
+# SERVICES
+# ============================================================
+
+function Get-ServiceStatus {
+
+    $important =
+        @(
+            "Dhcp",
+            "Dnscache",
+            "EventLog",
+            "Winmgmt",
+            "Spooler",
+            "wuauserv",
+            "BITS"
+        )
+
+    $result = @()
+
+    foreach ($name in $important) {
+
+        try {
+
+            $service =
+                Get-CimInstance Win32_Service `
+                    -Filter "Name='$name'"
+
+            if ($service) {
+
+                $result +=
+                    [PSCustomObject]@{
+
+                        name =
+                            $service.Name
+
+                        displayName =
+                            $service.DisplayName
+
+                        status =
+                            $service.State
+
+                        startType =
+                            $service.StartMode
+                    }
+            }
+        }
+        catch {
+        }
+    }
+
+    return @($result)
+}
+
+# ============================================================
+# PROCESSES
+# ============================================================
+
+function Get-ProcessStatus {
+
+    $result = @()
+
+    try {
+
+        $items =
+            Get-Process |
+            Sort-Object WorkingSet64 -Descending |
+            Select-Object -First 60
+
+        foreach ($item in $items) {
+
+            $cpu = 0
+
+            try {
+                $cpu =
+                    [math]::Round(
+                        $item.CPU,
+                        1
+                    )
+            }
+            catch {
+                $cpu = 0
+            }
+
+            $memory =
+                [math]::Round(
+                    $item.WorkingSet64 / 1MB,
+                    1
+                )
+
+            $result +=
+                [PSCustomObject]@{
+
+                    id =
+                        $item.Id
+
+                    name =
+                        $item.ProcessName
+
+                    cpu =
+                        $cpu
+
+                    memoryMB =
+                        $memory
+                }
+        }
+    }
+    catch {
+    }
+
+    return @($result)
+}
+
+# ============================================================
+# WINDOWS EVENTS
+# ============================================================
+
+function Get-Events {
+
+    $result = @()
+
+    try {
+
+        $events =
+            Get-WinEvent `
+                -FilterHashtable @{
+                    LogName = "System"
+                    Level = 1,2,3
+                } `
+                -MaxEvents 40
+
+        foreach ($event in $events) {
+
+            $result +=
+                [PSCustomObject]@{
+
+                    time =
+                        $event.TimeCreated.ToString("s")
+
+                    id =
+                        $event.Id
+
+                    provider =
+                        $event.ProviderName
+
+                    level =
+                        $event.LevelDisplayName
+
+                    message =
+                        $event.Message
+                }
+        }
+    }
+    catch {
+    }
+
+    return @($result)
+}
+
+# ============================================================
+# DIAGNOSTICS
+# ============================================================
+
+function Run-Diagnostics {
+
+    $metrics =
+        Get-Metrics
+
+    $network =
+        Get-NetworkInfo
+
+    $services =
+        Get-ServiceStatus
+
+    $problems = @()
+
+    if ($metrics.cpu -ge 90) {
+
+        $problems +=
+            [PSCustomObject]@{
+
+                title =
+                    "High CPU usage"
+
+                severity =
+                    "High"
+
+                description =
+                    "CPU usage is currently $($metrics.cpu)%."
+
+                recommendedFix =
+                    "Check processes using high CPU."
+            }
+    }
+
+    if ($metrics.ram -ge 90) {
+
+        $problems +=
+            [PSCustomObject]@{
+
+                title =
+                    "High memory usage"
+
+                severity =
+                    "High"
+
+                description =
+                    "RAM usage is currently $($metrics.ram)%."
+
+                recommendedFix =
+                    "Review running processes and memory usage."
+            }
+    }
+
+    if ($metrics.disk -ge 90) {
+
+        $problems +=
+            [PSCustomObject]@{
+
+                title =
+                    "Low disk space"
+
+                severity =
+                    "High"
+
+                description =
+                    "C: drive usage is $($metrics.disk)%."
+
+                recommendedFix =
+                    "Free disk space on drive C:."
+            }
+    }
+
+    if (-not $network.internet) {
+
+        $problems +=
+            [PSCustomObject]@{
+
+                title =
+                    "Internet connectivity problem"
+
+                severity =
+                    "Medium"
+
+                description =
+                    "The Agent could not reach the Internet."
+
+                recommendedFix =
+                    "Check network adapter, gateway and DNS."
+            }
+    }
+
+    foreach ($service in $services) {
+
+        if (
+            $service.Name -in
+            @(
+                "Dhcp",
+                "Dnscache",
+                "EventLog",
+                "Winmgmt"
+            )
+        ) {
+
+            if ($service.status -ne "Running") {
+
+                $problems +=
+                    [PSCustomObject]@{
+
+                        title =
+                            "Service not running: $($service.displayName)"
+
+                        severity =
+                            "Medium"
+
+                        description =
+                            "$($service.Name) is $($service.status)."
+
+                        recommendedFix =
+                            "Review and restart the service if appropriate."
+                    }
+            }
+        }
+    }
+
+    $health = 100
+
+    if ($metrics.cpu -ge 90) {
+        $health -= 25
+    }
+    elseif ($metrics.cpu -ge 75) {
+        $health -= 10
+    }
+
+    if ($metrics.ram -ge 90) {
+        $health -= 25
+    }
+    elseif ($metrics.ram -ge 75) {
+        $health -= 10
+    }
+
+    if ($metrics.disk -ge 90) {
+        $health -= 25
+    }
+    elseif ($metrics.disk -ge 80) {
+        $health -= 10
+    }
+
+    if (-not $network.internet) {
+        $health -= 20
+    }
+
+    if ($health -lt 0) {
+        $health = 0
+    }
+
+    return [PSCustomObject]@{
+
+        health =
+            $health
+
+        problems =
+            @($problems)
+    }
+}
+
+# ============================================================
+# JOB EVENT
 # ============================================================
 
 function Add-JobEvent {
+
     param(
-        [string]$Type,
+        [string]$Action,
         [string]$Message
     )
 
@@ -197,557 +744,102 @@ function Add-JobEvent {
         return
     }
 
-    $event = [ordered]@{
-        time    = Get-TimeStamp
-        type    = $Type
-        message = $Message
-    }
+    $event =
+        [PSCustomObject]@{
 
-    $events = @()
+            time =
+                (Get-Date).ToString("s")
 
-    if ($null -ne $global:CurrentJob.events) {
-        $events = @($global:CurrentJob.events)
-    }
+            action =
+                $Action
 
-    $events += [pscustomobject]$event
+            message =
+                $Message
+        }
 
-    $global:CurrentJob.events = $events
-
-    Save-CurrentJob
+    $global:CurrentJob.events +=
+        $event
 }
 
-
 # ============================================================
-# JOB START
+# START JOB
 # ============================================================
 
 function Start-NewJob {
 
     if ($null -ne $global:CurrentJob) {
 
-        if ($global:CurrentJob.status -eq "ACTIVE") {
-
-            return [ordered]@{
-                success = $true
-                message = "A job is already active."
-                job     = $global:CurrentJob
-            }
+        return @{
+            success = $false
+            message = "A job is already active."
+            job = $global:CurrentJob
         }
     }
 
-    $jobId = New-JobId
+    $jobId =
+        "JOB-" +
+        (Get-Date -Format "yyyyMMdd-HHmmss")
 
-    $job = [ordered]@{
-        id         = $jobId
-        status     = "ACTIVE"
-        startedAt  = Get-TimeStamp
-        endedAt    = $null
-        computer   = $env:COMPUTERNAME
-        user       = $env:USERNAME
-        technician = $env:USERNAME
-        events     = @()
-        notes      = @()
-    }
+    $global:CurrentJob =
+        [PSCustomObject]@{
 
-    $global:CurrentJob = [pscustomobject]$job
+            id =
+                $jobId
+
+            computer =
+                $env:COMPUTERNAME
+
+            user =
+                $env:USERNAME
+
+            startedAt =
+                (Get-Date).ToString("s")
+
+            endedAt =
+                $null
+
+            status =
+                "ACTIVE"
+
+            events =
+                @()
+        }
 
     Add-JobEvent `
-        -Type "job-start" `
-        -Message "Diagnostic job started."
+        "job-start" `
+        "Diagnostic job started."
 
-    Save-CurrentJob
-
-    return [ordered]@{
+    return @{
         success = $true
-        message = "Job started."
-        job     = $global:CurrentJob
+        job = $global:CurrentJob
+        message = "Job started successfully."
     }
 }
 
-
 # ============================================================
-# SYSTEM INFORMATION
-# ============================================================
-
-function Get-SystemInformation {
-
-    $computer = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
-    $os       = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
-    $bios     = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue
-
-    return [ordered]@{
-        computerName = $env:COMPUTERNAME
-        userName     = $env:USERNAME
-        domain       = $env:USERDOMAIN
-        manufacturer = $computer.Manufacturer
-        model        = $computer.Model
-        serialNumber = $bios.SerialNumber
-        os           = $os.Caption
-        osVersion    = $os.Version
-        build        = $os.BuildNumber
-        architecture = $os.OSArchitecture
-        memoryGB     = if ($computer.TotalPhysicalMemory) {
-            [math]::Round(
-                $computer.TotalPhysicalMemory / 1GB,
-                2
-            )
-        }
-        else {
-            $null
-        }
-        lastBoot     = if ($os.LastBootUpTime) {
-            [Management.ManagementDateTimeConverter]::ToDateTime(
-                $os.LastBootUpTime
-            )
-        }
-        else {
-            $null
-        }
-    }
-}
-
-
-# ============================================================
-# METRICS
+# HTML ESCAPE
 # ============================================================
 
-function Get-SystemMetrics {
-
-    $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
-
-    $cpu = $null
-
-    try {
-        $cpu = (Get-CimInstance Win32_Processor |
-            Measure-Object -Property LoadPercentage -Average).Average
-    }
-    catch {
-        $cpu = $null
-    }
-
-    $totalMemory = $null
-    $freeMemory  = $null
-    $usedMemory  = $null
-
-    if ($os) {
-
-        $totalMemory = [double]$os.TotalVisibleMemorySize * 1KB
-        $freeMemory  = [double]$os.FreePhysicalMemory * 1KB
-
-        if ($totalMemory -gt 0) {
-            $usedMemory = $totalMemory - $freeMemory
-        }
-    }
-
-    $disks = @()
-
-    try {
-
-        Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" |
-        ForEach-Object {
-
-            $freeGB = 0
-            $sizeGB = 0
-
-            if ($_.Size) {
-                $sizeGB = [math]::Round($_.Size / 1GB, 2)
-            }
-
-            if ($_.FreeSpace) {
-                $freeGB = [math]::Round($_.FreeSpace / 1GB, 2)
-            }
-
-            $usedPercent = 0
-
-            if ($_.Size -gt 0) {
-                $usedPercent = [math]::Round(
-                    (($_.Size - $_.FreeSpace) / $_.Size) * 100,
-                    1
-                )
-            }
-
-            $disks += [ordered]@{
-                drive       = $_.DeviceID
-                sizeGB      = $sizeGB
-                freeGB      = $freeGB
-                usedPercent = $usedPercent
-            }
-        }
-    }
-    catch {
-    }
-
-    return [ordered]@{
-        cpuPercent         = if ($null -ne $cpu) {
-            [math]::Round($cpu, 1)
-        } else {
-            $null
-        }
-
-        totalMemoryGB      = if ($totalMemory) {
-            [math]::Round($totalMemory / 1GB, 2)
-        } else {
-            $null
-        }
-
-        usedMemoryGB       = if ($usedMemory) {
-            [math]::Round($usedMemory / 1GB, 2)
-        } else {
-            $null
-        }
-
-        freeMemoryGB       = if ($freeMemory) {
-            [math]::Round($freeMemory / 1GB, 2)
-        } else {
-            $null
-        }
-
-        disks = $disks
-    }
-}
-
-
-# ============================================================
-# NETWORK
-# ============================================================
-
-function Get-NetworkInformation {
-
-    $adapters = @()
-
-    try {
-
-        Get-NetIPConfiguration -ErrorAction SilentlyContinue |
-        ForEach-Object {
-
-            $ipv4 = @()
-
-            if ($_.IPv4Address) {
-                $ipv4 = @(
-                    $_.IPv4Address |
-                    ForEach-Object {
-                        $_.IPv4Address
-                    }
-                )
-            }
-
-            $dns = @()
-
-            if ($_.DNSServer.ServerAddresses) {
-                $dns = @(
-                    $_.DNSServer.ServerAddresses
-                )
-            }
-
-            $adapters += [ordered]@{
-                interface       = $_.InterfaceAlias
-                description     = $_.InterfaceDescription
-                status          = [string]$_.NetAdapter.Status
-                mac             = $_.NetAdapter.MacAddress
-                ipv4            = $ipv4
-                gateway         = $_.IPv4DefaultGateway.NextHop
-                dns             = $dns
-            }
-        }
-    }
-    catch {
-
-        try {
-
-            Get-NetAdapter -ErrorAction SilentlyContinue |
-            ForEach-Object {
-
-                $adapters += [ordered]@{
-                    interface   = $_.Name
-                    description = $_.InterfaceDescription
-                    status      = [string]$_.Status
-                    mac         = $_.MacAddress
-                    ipv4        = @()
-                    gateway     = $null
-                    dns         = @()
-                }
-            }
-        }
-        catch {
-        }
-    }
-
-    return $adapters
-}
-
-
-# ============================================================
-# SERVICES
-# ============================================================
-
-function Get-ServiceInformation {
-
-    $services = @()
-
-    try {
-
-        Get-Service |
-        Sort-Object Status,DisplayName |
-        ForEach-Object {
-
-            $services += [ordered]@{
-                name        = $_.Name
-                displayName = $_.DisplayName
-                status      = [string]$_.Status
-                startType   = try {
-                    (Get-CimInstance Win32_Service `
-                        -Filter "Name='$($_.Name)'" `
-                        -ErrorAction Stop).StartMode
-                }
-                catch {
-                    $null
-                }
-            }
-        }
-    }
-    catch {
-    }
-
-    return $services
-}
-
-
-# ============================================================
-# PROCESSES
-# ============================================================
-
-function Get-ProcessInformation {
-
-    $processes = @()
-
-    try {
-
-        Get-Process |
-        Sort-Object CPU -Descending -ErrorAction SilentlyContinue |
-        Select-Object -First 150 |
-        ForEach-Object {
-
-            $cpu = $null
-
-            try {
-                $cpu = $_.CPU
-            }
-            catch {
-            }
-
-            $memory = $null
-
-            try {
-                $memory = $_.WorkingSet64
-            }
-            catch {
-            }
-
-            $processes += [ordered]@{
-                id        = $_.Id
-                name      = $_.ProcessName
-                cpu       = $cpu
-                memoryMB  = if ($memory) {
-                    [math]::Round($memory / 1MB, 1)
-                }
-                else {
-                    0
-                }
-            }
-        }
-    }
-    catch {
-    }
-
-    return $processes
-}
-
-
-# ============================================================
-# WINDOWS EVENTS
-# ============================================================
-
-function Get-WindowsEvents {
-
-    $events = @()
-
-    try {
-
-        Get-WinEvent -FilterHashtable @{
-            LogName   = "System"
-            StartTime = (Get-Date).AddHours(-24)
-        } -MaxEvents 100 -ErrorAction Stop |
-        ForEach-Object {
-
-            $events += [ordered]@{
-                time    = $_.TimeCreated
-                level   = [string]$_.LevelDisplayName
-                source  = $_.ProviderName
-                id      = $_.Id
-                message = $_.Message
-            }
-        }
-    }
-    catch {
-    }
-
-    return $events
-}
-
-
-# ============================================================
-# DIAGNOSTICS
-# ============================================================
-
-function Invoke-Diagnostics {
-
-    $results = @()
-
-    # DNS
-    try {
-
-        $dns = Resolve-DnsName `
-            -Name "www.microsoft.com" `
-            -ErrorAction Stop
-
-        $results += [ordered]@{
-            test    = "DNS"
-            status  = "PASS"
-            message = "DNS resolution successful."
-        }
-    }
-    catch {
-
-        $results += [ordered]@{
-            test    = "DNS"
-            status  = "FAIL"
-            message = $_.Exception.Message
-        }
-    }
-
-    # Internet
-    try {
-
-        $ping = Test-Connection `
-            -ComputerName "8.8.8.8" `
-            -Count 1 `
-            -Quiet `
-            -ErrorAction Stop
-
-        if ($ping) {
-
-            $results += [ordered]@{
-                test    = "Internet"
-                status  = "PASS"
-                message = "8.8.8.8 is reachable."
-            }
-        }
-        else {
-
-            $results += [ordered]@{
-                test    = "Internet"
-                status  = "FAIL"
-                message = "8.8.8.8 is not reachable."
-            }
-        }
-    }
-    catch {
-
-        $results += [ordered]@{
-            test    = "Internet"
-            status  = "FAIL"
-            message = $_.Exception.Message
-        }
-    }
-
-    # Local Agent
-    try {
-
-        $results += [ordered]@{
-            test    = "Local Agent"
-            status  = "PASS"
-            message = "IT Diagnostic Agent is running."
-        }
-    }
-    catch {
-    }
-
-    return $results
-}
-
-
-# ============================================================
-# KILL PROCESS
-# ============================================================
-
-function Kill-ProcessById {
+function ConvertTo-HtmlSafe {
 
     param(
-        [int]$ProcessId
+        [object]$Value
     )
 
-    if ($ProcessId -le 0) {
-
-        return [ordered]@{
-            success = $false
-            message = "Invalid process ID."
-        }
+    if ($null -eq $Value) {
+        return ""
     }
 
-    if ($ProcessId -eq 4) {
-
-        return [ordered]@{
-            success = $false
-            message = "PID 4 is protected. HTTP.sys/System will not be terminated."
-        }
-    }
-
-    try {
-
-        $process = Get-Process -Id $ProcessId -ErrorAction Stop
-
-        $name = $process.ProcessName
-
-        Stop-Process `
-            -Id $ProcessId `
-            -Force `
-            -ErrorAction Stop
-
-        if ($global:CurrentJob) {
-
-            Add-JobEvent `
-                -Type "process-kill" `
-                -Message "Process $ProcessId ($name) terminated."
-        }
-
-        return [ordered]@{
-            success = $true
-            message = "Process terminated."
-            pid     = $ProcessId
-            name    = $name
-        }
-    }
-    catch {
-
-        return [ordered]@{
-            success = $false
-            message = $_.Exception.Message
-        }
-    }
+    return (
+        [System.Net.WebUtility]::HtmlEncode(
+            [string]$Value
+        )
+    )
 }
-
 
 # ============================================================
 # REPORT
 # ============================================================
-
-function Get-ReportFile {
-    param(
-        [string]$JobId
-    )
-
-    return (Join-Path $ReportDir ($JobId + ".html"))
-}
 
 function New-JobReport {
 
@@ -755,315 +847,424 @@ function New-JobReport {
         $Job
     )
 
-    $jobId = [string]$Job.id
-    $reportFile = Get-ReportFile -JobId $jobId
+    try {
 
-    $system      = Get-SystemInformation
-    $metrics     = Get-SystemMetrics
-    $network     = Get-NetworkInformation
-    $services    = Get-ServiceInformation
-    $processes   = Get-ProcessInformation
-    $events      = Get-WindowsEvents
-    $diagnostics = Invoke-Diagnostics
+        New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $ReportDir |
+            Out-Null
 
-    $sb = New-Object System.Text.StringBuilder
+        $safeId =
+            $Job.id -replace '[^a-zA-Z0-9\-_]', '_'
 
-    [void]$sb.AppendLine("<!DOCTYPE html>")
-    [void]$sb.AppendLine("<html>")
-    [void]$sb.AppendLine("<head>")
-    [void]$sb.AppendLine("<meta charset='utf-8'>")
-    [void]$sb.AppendLine("<title>IT Diagnostic Report - $(HtmlEncode $jobId)</title>")
+        $reportFile =
+            Join-Path `
+                $ReportDir `
+                "$safeId.html"
 
-    [void]$sb.AppendLine(@"
+        $system =
+            Get-SystemInfo
+
+        $metrics =
+            Get-Metrics
+
+        $network =
+            Get-NetworkInfo
+
+        $services =
+            Get-ServiceStatus
+
+        $events =
+            Get-Events
+
+        $diagnostics =
+            Run-Diagnostics
+
+        $problemRows = ""
+
+        foreach ($problem in $diagnostics.problems) {
+
+            $problemRows +=
+                "<tr>" +
+                "<td>$(ConvertTo-HtmlSafe $problem.title)</td>" +
+                "<td>$(ConvertTo-HtmlSafe $problem.severity)</td>" +
+                "<td>$(ConvertTo-HtmlSafe $problem.description)</td>" +
+                "<td>$(ConvertTo-HtmlSafe $problem.recommendedFix)</td>" +
+                "</tr>"
+        }
+
+        if ([string]::IsNullOrWhiteSpace($problemRows)) {
+
+            $problemRows =
+                "<tr><td colspan='4'>No detected problems.</td></tr>"
+        }
+
+        $serviceRows = ""
+
+        foreach ($service in $services) {
+
+            $serviceRows +=
+                "<tr>" +
+                "<td>$(ConvertTo-HtmlSafe $service.name)</td>" +
+                "<td>$(ConvertTo-HtmlSafe $service.displayName)</td>" +
+                "<td>$(ConvertTo-HtmlSafe $service.status)</td>" +
+                "<td>$(ConvertTo-HtmlSafe $service.startType)</td>" +
+                "</tr>"
+        }
+
+        $eventRows = ""
+
+        foreach ($event in $events) {
+
+            $eventRows +=
+                "<tr>" +
+                "<td>$(ConvertTo-HtmlSafe $event.time)</td>" +
+                "<td>$(ConvertTo-HtmlSafe $event.id)</td>" +
+                "<td>$(ConvertTo-HtmlSafe $event.provider)</td>" +
+                "<td>$(ConvertTo-HtmlSafe $event.level)</td>" +
+                "<td>$(ConvertTo-HtmlSafe $event.message)</td>" +
+                "</tr>"
+        }
+
+        $html = @"
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>IT Diagnostic Report - $($Job.id)</title>
 <style>
 body {
     font-family: Segoe UI, Arial, sans-serif;
-    background:#111827;
-    color:#e5e7eb;
-    margin:0;
-    padding:30px;
+    margin: 30px;
+    background: #f4f6f8;
+    color: #17202a;
 }
-.container {
-    max-width:1400px;
-    margin:auto;
-}
-h1,h2 {
-    color:#fff;
-}
+h1 { margin-bottom: 5px; }
 .card {
-    background:#1f2937;
-    border:1px solid #374151;
-    border-radius:12px;
-    padding:20px;
-    margin-bottom:20px;
+    background: white;
+    border: 1px solid #d8dee4;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+.grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+.metric {
+    background: #eef2f5;
+    padding: 14px;
+    border-radius: 8px;
+}
+.label {
+    color: #68737d;
+    font-size: 12px;
+}
+.value {
+    font-size: 20px;
+    font-weight: bold;
+    margin-top: 5px;
 }
 table {
-    width:100%;
-    border-collapse:collapse;
+    width: 100%;
+    border-collapse: collapse;
 }
-th,td {
-    padding:9px;
-    border-bottom:1px solid #374151;
-    text-align:left;
-    vertical-align:top;
+th, td {
+    border: 1px solid #d8dee4;
+    padding: 8px;
+    text-align: left;
+    vertical-align: top;
 }
 th {
-    background:#111827;
+    background: #eef2f5;
 }
-pre {
-    white-space:pre-wrap;
-    word-break:break-word;
-}
-.pass {
-    font-weight:bold;
-}
-.fail {
-    font-weight:bold;
-}
-.small {
-    color:#9ca3af;
+.ok {
+    color: green;
+    font-weight: bold;
 }
 </style>
-"@)
+</head>
 
-    [void]$sb.AppendLine("</head>")
-    [void]$sb.AppendLine("<body>")
-    [void]$sb.AppendLine("<div class='container'>")
+<body>
 
-    [void]$sb.AppendLine(
-        "<h1>IT FIELD DIAGNOSTIC REPORT</h1>"
-    )
+<h1>IT FIELD DIAGNOSTIC PORTAL V5</h1>
 
-    [void]$sb.AppendLine(
-        "<div class='card'><h2>Job</h2>"
-    )
+<p>
+Generated:
+$(Get-Date)
+</p>
 
-    [void]$sb.AppendLine(
-        "<p><b>Job ID:</b> $(HtmlEncode $job.id)</p>"
-    )
+<div class="card">
 
-    [void]$sb.AppendLine(
-        "<p><b>Status:</b> $(HtmlEncode $job.status)</p>"
-    )
+<h2>Job Information</h2>
 
-    [void]$sb.AppendLine(
-        "<p><b>Computer:</b> $(HtmlEncode $job.computer)</p>"
-    )
+<div class="grid">
 
-    [void]$sb.AppendLine(
-        "<p><b>User:</b> $(HtmlEncode $job.user)</p>"
-    )
+<div class="metric">
+<div class="label">Job ID</div>
+<div class="value">$($Job.id)</div>
+</div>
 
-    [void]$sb.AppendLine(
-        "<p><b>Started:</b> $(HtmlEncode $job.startedAt)</p>"
-    )
+<div class="metric">
+<div class="label">Computer</div>
+<div class="value">$($Job.computer)</div>
+</div>
 
-    [void]$sb.AppendLine(
-        "<p><b>Ended:</b> $(HtmlEncode $job.endedAt)</p>"
-    )
+<div class="metric">
+<div class="label">User</div>
+<div class="value">$($Job.user)</div>
+</div>
 
-    [void]$sb.AppendLine("</div>")
+<div class="metric">
+<div class="label">Started</div>
+<div class="value">$($Job.startedAt)</div>
+</div>
 
+<div class="metric">
+<div class="label">Ended</div>
+<div class="value">$($Job.endedAt)</div>
+</div>
 
-    # SYSTEM
-    [void]$sb.AppendLine("<div class='card'>")
-    [void]$sb.AppendLine("<h2>System Information</h2>")
-    [void]$sb.AppendLine("<table>")
+</div>
+</div>
 
-    foreach ($property in $system.Keys) {
+<div class="card">
 
-        $value = $system[$property]
+<h2>System Information</h2>
 
-        if ($value -is [System.Array] -or
-            $value -is [System.Collections.IEnumerable]) {
+<div class="grid">
 
-            $value = ($value | Out-String)
+<div class="metric">
+<div class="label">Computer</div>
+<div class="value">$($system.computer)</div>
+</div>
+
+<div class="metric">
+<div class="label">User</div>
+<div class="value">$($system.user)</div>
+</div>
+
+<div class="metric">
+<div class="label">Manufacturer</div>
+<div class="value">$($system.manufacturer)</div>
+</div>
+
+<div class="metric">
+<div class="label">Model</div>
+<div class="value">$($system.model)</div>
+</div>
+
+<div class="metric">
+<div class="label">Windows</div>
+<div class="value">$($system.windows)</div>
+</div>
+
+<div class="metric">
+<div class="label">Build</div>
+<div class="value">$($system.build)</div>
+</div>
+
+<div class="metric">
+<div class="label">Architecture</div>
+<div class="value">$($system.architecture)</div>
+</div>
+
+<div class="metric">
+<div class="label">Memory</div>
+<div class="value">$($system.memoryGB) GB</div>
+</div>
+
+</div>
+</div>
+
+<div class="card">
+
+<h2>System Health</h2>
+
+<div class="grid">
+
+<div class="metric">
+<div class="label">Health</div>
+<div class="value">$($diagnostics.health) / 100</div>
+</div>
+
+<div class="metric">
+<div class="label">CPU</div>
+<div class="value">$($metrics.cpu)%</div>
+</div>
+
+<div class="metric">
+<div class="label">RAM</div>
+<div class="value">$($metrics.ram)%</div>
+</div>
+
+<div class="metric">
+<div class="label">Disk C:</div>
+<div class="value">$($metrics.disk)%</div>
+</div>
+
+<div class="metric">
+<div class="label">Free RAM</div>
+<div class="value">$($metrics.ramFreeGB) GB</div>
+</div>
+
+<div class="metric">
+<div class="label">Free Disk</div>
+<div class="value">$($metrics.diskFreeGB) GB</div>
+</div>
+
+</div>
+</div>
+
+<div class="card">
+
+<h2>Diagnostics</h2>
+
+<table>
+<thead>
+<tr>
+<th>Problem</th>
+<th>Severity</th>
+<th>Description</th>
+<th>Recommended Fix</th>
+</tr>
+</thead>
+<tbody>
+$problemRows
+</tbody>
+</table>
+
+</div>
+
+<div class="card">
+
+<h2>Network</h2>
+
+<p>
+Internet:
+<strong>
+$(if ($network.internet) { "ONLINE" } else { "OFFLINE" })
+</strong>
+</p>
+
+<table>
+<thead>
+<tr>
+<th>Interface</th>
+<th>IPv4</th>
+<th>Gateway</th>
+<th>DNS</th>
+</tr>
+</thead>
+<tbody>
+$(
+    (
+        $network.adapters |
+        ForEach-Object {
+            "<tr>" +
+            "<td>$($_.interface)</td>" +
+            "<td>$($_.ipv4)</td>" +
+            "<td>$($_.gateway)</td>" +
+            "<td>$($_.dns)</td>" +
+            "</tr>"
         }
+    ) -join ""
+)
+</tbody>
+</table>
 
-        [void]$sb.AppendLine(
-            "<tr><th>$(HtmlEncode $property)</th><td><pre>$(HtmlEncode $value)</pre></td></tr>"
-        )
-    }
+</div>
 
-    [void]$sb.AppendLine("</table>")
-    [void]$sb.AppendLine("</div>")
+<div class="card">
 
+<h2>Services</h2>
 
-    # METRICS
-    [void]$sb.AppendLine("<div class='card'>")
-    [void]$sb.AppendLine("<h2>System Metrics</h2>")
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Display Name</th>
+<th>Status</th>
+<th>Start Type</th>
+</tr>
+</thead>
+<tbody>
+$serviceRows
+</tbody>
+</table>
 
-    [void]$sb.AppendLine(
-        "<p><b>CPU:</b> $(HtmlEncode $metrics.cpuPercent)%</p>"
-    )
+</div>
 
-    [void]$sb.AppendLine(
-        "<p><b>Total Memory:</b> $(HtmlEncode $metrics.totalMemoryGB) GB</p>"
-    )
+<div class="card">
 
-    [void]$sb.AppendLine(
-        "<p><b>Used Memory:</b> $(HtmlEncode $metrics.usedMemoryGB) GB</p>"
-    )
+<h2>Windows Events</h2>
 
-    [void]$sb.AppendLine(
-        "<p><b>Free Memory:</b> $(HtmlEncode $metrics.freeMemoryGB) GB</p>"
-    )
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>ID</th>
+<th>Provider</th>
+<th>Level</th>
+<th>Message</th>
+</tr>
+</thead>
+<tbody>
+$eventRows
+</tbody>
+</table>
 
-    [void]$sb.AppendLine("</div>")
+</div>
 
+<div class="card">
 
-    # NETWORK
-    [void]$sb.AppendLine("<div class='card'>")
-    [void]$sb.AppendLine("<h2>Network</h2>")
-    [void]$sb.AppendLine("<table>")
-    [void]$sb.AppendLine("<tr><th>Interface</th><th>Status</th><th>MAC</th><th>IPv4</th><th>Gateway</th><th>DNS</th></tr>")
+<h2>Job Activity</h2>
 
-    foreach ($adapter in $network) {
-
-        $ipv4 = ($adapter.ipv4 -join ", ")
-        $dns  = ($adapter.dns -join ", ")
-
-        [void]$sb.AppendLine(
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>Action</th>
+<th>Message</th>
+</tr>
+</thead>
+<tbody>
+$(
+    (
+        $Job.events |
+        ForEach-Object {
             "<tr>" +
-            "<td>$(HtmlEncode $adapter.interface)</td>" +
-            "<td>$(HtmlEncode $adapter.status)</td>" +
-            "<td>$(HtmlEncode $adapter.mac)</td>" +
-            "<td>$(HtmlEncode $ipv4)</td>" +
-            "<td>$(HtmlEncode $adapter.gateway)</td>" +
-            "<td>$(HtmlEncode $dns)</td>" +
+            "<td>$($_.time)</td>" +
+            "<td>$($_.action)</td>" +
+            "<td>$($_.message)</td>" +
             "</tr>"
-        )
+        }
+    ) -join ""
+)
+</tbody>
+</table>
+
+</div>
+
+</body>
+</html>
+"@
+
+        Set-Content `
+            -Path $reportFile `
+            -Value $html `
+            -Encoding UTF8
+
+        return $reportFile
+
     }
+    catch {
 
-    [void]$sb.AppendLine("</table>")
-    [void]$sb.AppendLine("</div>")
-
-
-    # DIAGNOSTICS
-    [void]$sb.AppendLine("<div class='card'>")
-    [void]$sb.AppendLine("<h2>Diagnostics</h2>")
-    [void]$sb.AppendLine("<table>")
-    [void]$sb.AppendLine("<tr><th>Test</th><th>Status</th><th>Message</th></tr>")
-
-    foreach ($result in $diagnostics) {
-
-        [void]$sb.AppendLine(
-            "<tr>" +
-            "<td>$(HtmlEncode $result.test)</td>" +
-            "<td>$(HtmlEncode $result.status)</td>" +
-            "<td>$(HtmlEncode $result.message)</td>" +
-            "</tr>"
-        )
+        return $null
     }
-
-    [void]$sb.AppendLine("</table>")
-    [void]$sb.AppendLine("</div>")
-
-
-    # SERVICES
-    [void]$sb.AppendLine("<div class='card'>")
-    [void]$sb.AppendLine("<h2>Services</h2>")
-    [void]$sb.AppendLine("<table>")
-    [void]$sb.AppendLine("<tr><th>Name</th><th>Display Name</th><th>Status</th><th>Start Type</th></tr>")
-
-    foreach ($service in $services) {
-
-        [void]$sb.AppendLine(
-            "<tr>" +
-            "<td>$(HtmlEncode $service.name)</td>" +
-            "<td>$(HtmlEncode $service.displayName)</td>" +
-            "<td>$(HtmlEncode $service.status)</td>" +
-            "<td>$(HtmlEncode $service.startType)</td>" +
-            "</tr>"
-        )
-    }
-
-    [void]$sb.AppendLine("</table>")
-    [void]$sb.AppendLine("</div>")
-
-
-    # PROCESSES
-    [void]$sb.AppendLine("<div class='card'>")
-    [void]$sb.AppendLine("<h2>Processes</h2>")
-    [void]$sb.AppendLine("<table>")
-    [void]$sb.AppendLine("<tr><th>PID</th><th>Name</th><th>CPU</th><th>Memory MB</th></tr>")
-
-    foreach ($process in $processes) {
-
-        [void]$sb.AppendLine(
-            "<tr>" +
-            "<td>$(HtmlEncode $process.id)</td>" +
-            "<td>$(HtmlEncode $process.name)</td>" +
-            "<td>$(HtmlEncode $process.cpu)</td>" +
-            "<td>$(HtmlEncode $process.memoryMB)</td>" +
-            "</tr>"
-        )
-    }
-
-    [void]$sb.AppendLine("</table>")
-    [void]$sb.AppendLine("</div>")
-
-
-    # EVENTS
-    [void]$sb.AppendLine("<div class='card'>")
-    [void]$sb.AppendLine("<h2>Windows Events - Last 24 Hours</h2>")
-    [void]$sb.AppendLine("<table>")
-    [void]$sb.AppendLine("<tr><th>Time</th><th>Level</th><th>Source</th><th>ID</th><th>Message</th></tr>")
-
-    foreach ($event in $events) {
-
-        [void]$sb.AppendLine(
-            "<tr>" +
-            "<td>$(HtmlEncode $event.time)</td>" +
-            "<td>$(HtmlEncode $event.level)</td>" +
-            "<td>$(HtmlEncode $event.source)</td>" +
-            "<td>$(HtmlEncode $event.id)</td>" +
-            "<td><pre>$(HtmlEncode $event.message)</pre></td>" +
-            "</tr>"
-        )
-    }
-
-    [void]$sb.AppendLine("</table>")
-    [void]$sb.AppendLine("</div>")
-
-
-    # JOB EVENTS
-    [void]$sb.AppendLine("<div class='card'>")
-    [void]$sb.AppendLine("<h2>Job Events</h2>")
-    [void]$sb.AppendLine("<table>")
-    [void]$sb.AppendLine("<tr><th>Time</th><th>Type</th><th>Message</th></tr>")
-
-    foreach ($event in @($job.events)) {
-
-        [void]$sb.AppendLine(
-            "<tr>" +
-            "<td>$(HtmlEncode $event.time)</td>" +
-            "<td>$(HtmlEncode $event.type)</td>" +
-            "<td>$(HtmlEncode $event.message)</td>" +
-            "</tr>"
-        )
-    }
-
-    [void]$sb.AppendLine("</table>")
-    [void]$sb.AppendLine("</div>")
-
-    [void]$sb.AppendLine(
-        "<p class='small'>Generated by IT Diagnostic Agent V5.1</p>"
-    )
-
-    [void]$sb.AppendLine("</div>")
-    [void]$sb.AppendLine("</body>")
-    [void]$sb.AppendLine("</html>")
-
-    [System.IO.File]::WriteAllText(
-        $reportFile,
-        $sb.ToString(),
-        [System.Text.Encoding]::UTF8
-    )
-
-    return $reportFile
 }
-
 
 # ============================================================
 # END JOB
@@ -1073,98 +1274,132 @@ function End-CurrentJob {
 
     if ($null -eq $global:CurrentJob) {
 
-        return [ordered]@{
+        return @{
             success = $false
             message = "No active job."
+            report = $null
         }
     }
 
-    if ($global:CurrentJob.status -ne "ACTIVE") {
+    $global:CurrentJob.endedAt =
+        (Get-Date).ToString("s")
 
-        return [ordered]@{
-            success = $false
-            message = "No active job."
-        }
-    }
+    $global:CurrentJob.status =
+        "COMPLETED"
 
-    $job = $global:CurrentJob
+    Add-JobEvent `
+        "job-end" `
+        "Diagnostic job ended."
 
-    $job.endedAt = Get-TimeStamp
-    $job.status  = "COMPLETED"
+    $finished =
+        $global:CurrentJob
 
-    $newEvent = [ordered]@{
-        time    = Get-TimeStamp
-        type    = "job-end"
-        message = "Diagnostic job ended."
-    }
+    $reportFile =
+        New-JobReport `
+            -Job $finished
 
-    $existingEvents = @()
+    $global:History +=
+        $finished
 
-    if ($null -ne $job.events) {
-        $existingEvents = @($job.events)
-    }
+    Save-History
 
-    $existingEvents += [pscustomobject]$newEvent
-    $job.events = $existingEvents
+    $global:CurrentJob =
+        $null
 
-    # Save completed job before clearing current job
-    $completedJobFile = Join-Path $TempDir ($job.id + "-completed.json")
-
-    Save-JsonFile `
-        -Path $completedJobFile `
-        -Object $job |
-        Out-Null
-
-    # History
-    $history = Get-History
-
-    $history = @(
-        $job
-    ) + @(
-        $history
-    )
-
-    if ($history.Count -gt 100) {
-        $history = @(
-            $history |
-            Select-Object -First 100
-        )
-    }
-
-    Save-History -History $history
-
-    # Clear active job immediately
-    $global:CurrentJob = $null
-
-    if (Test-Path $CurrentJobFile) {
-        Remove-Item $CurrentJobFile -Force -ErrorAction SilentlyContinue
-    }
-
-    # Create report synchronously
-    # This avoids spawning another Agent process.
-    $reportFile = $null
-
-    try {
-        $reportFile = New-JobReport -Job $job
-    }
-    catch {
-        $reportFile = $null
-    }
-
-    return [ordered]@{
+    return @{
         success = $true
-        message = if ($reportFile) {
-            "Job ended and report generated."
-        }
-        else {
-            "Job ended but report generation failed."
-        }
-        job    = $job
+        job = $finished
         report = $reportFile
-        ready  = [bool]$reportFile
+        message = "Job ended successfully."
     }
 }
 
+# ============================================================
+# KILL PROCESS
+# ============================================================
+
+function Stop-TargetProcess {
+
+    param(
+        [int]$ProcessId
+    )
+
+    if ($ProcessId -eq 4) {
+
+        return @{
+            success = $false
+            message = "PID 4 is protected."
+        }
+    }
+
+    if ($ProcessId -le 0) {
+
+        return @{
+            success = $false
+            message = "Invalid process ID."
+        }
+    }
+
+    try {
+
+        $process =
+            Get-Process `
+                -Id $ProcessId `
+                -ErrorAction Stop
+
+        $protected =
+            @(
+                "System",
+                "Idle",
+                "Memory Compression",
+                "explorer",
+                "svchost",
+                "csrss",
+                "smss",
+                "wininit",
+                "services",
+                "lsass",
+                "winlogon",
+                "dwm",
+                "sihost",
+                "taskhostw"
+            )
+
+        if (
+            $protected -contains
+            $process.ProcessName
+        ) {
+
+            return @{
+                success = $false
+                message =
+                    "Protected process cannot be terminated."
+            }
+        }
+
+        Stop-Process `
+            -Id $ProcessId `
+            -Force `
+            -ErrorAction Stop
+
+        return @{
+            success = $true
+            message =
+                "Process terminated."
+            pid =
+                $ProcessId
+        }
+
+    }
+    catch {
+
+        return @{
+            success = $false
+            message =
+                $_.Exception.Message
+        }
+    }
+}
 
 # ============================================================
 # REPORT STATUS
@@ -1178,147 +1413,118 @@ function Get-ReportStatus {
 
     if ([string]::IsNullOrWhiteSpace($JobId)) {
 
-        return [ordered]@{
+        return @{
             success = $false
-            ready   = $false
+            ready = $false
             message = "Job ID is required."
         }
     }
 
-    $file = Get-ReportFile -JobId $JobId
+    $safeId =
+        $JobId -replace '[^a-zA-Z0-9\-_]', '_'
+
+    $file =
+        Join-Path `
+            $ReportDir `
+            "$safeId.html"
 
     if (Test-Path $file) {
 
-        return [ordered]@{
+        return @{
             success = $true
-            ready   = $true
-            report  = $file
-            message = "Report is ready."
+            ready = $true
+            status = "ready"
+            path = $file
         }
     }
 
-    return [ordered]@{
+    return @{
         success = $true
-        ready   = $false
-        report  = $file
-        message = "Report is not ready."
+        ready = $false
+        status = "pending"
+        path = $file
     }
 }
 
-
 # ============================================================
-# OPEN REPORT
+# HTTP LISTENER
 # ============================================================
 
-function Open-Report {
+$listener =
+    New-Object System.Net.HttpListener
 
-    param(
-        [string]$JobId
+try {
+
+    $listener.Prefixes.Add(
+        $AgentUrl
     )
 
-    if ([string]::IsNullOrWhiteSpace($JobId)) {
+    $listener.Start()
 
-        return [ordered]@{
-            success = $false
-            message = "Job ID is required."
-        }
-    }
+}
+catch {
 
-    $file = Get-ReportFile -JobId $JobId
+    Write-Host ""
+    Write-Host "Unable to start IT Diagnostic Agent." `
+        -ForegroundColor Red
+    Write-Host $_.Exception.Message `
+        -ForegroundColor Red
+    Write-Host ""
 
-    if (-not (Test-Path $file)) {
-
-        return [ordered]@{
-            success = $false
-            message = "Report file does not exist."
-            report  = $file
-        }
-    }
-
-    try {
-
-        Start-Process $file | Out-Null
-
-        return [ordered]@{
-            success = $true
-            message = "Report opened."
-            report  = $file
-        }
-    }
-    catch {
-
-        return [ordered]@{
-            success = $false
-            message = $_.Exception.Message
-            report  = $file
-        }
-    }
+    exit 1
 }
 
+Write-Host ""
+Write-Host "IT Diagnostic Agent V5.1" `
+    -ForegroundColor Green
+Write-Host "Listening on $AgentUrl" `
+    -ForegroundColor Cyan
+Write-Host ""
 
 # ============================================================
-# AGENT STOP
+# REQUEST LOOP
 # ============================================================
 
-function Start-AgentStopWorker {
+try {
 
-    $targetPid = [int]$PID
+    while ($listener.IsListening) {
 
-    $stopScript = Join-Path $TempDir "Stop-Agent-$targetPid.cmd"
+        $context = $null
 
-    $cmd = @"
-@echo off
-timeout /t 2 /nobreak >nul
-taskkill /PID $targetPid /F >nul 2>&1
-del "%~f0" >nul 2>&1
-"@
+        try {
 
-    try {
+            $context =
+                $listener.GetContext()
 
-        [System.IO.File]::WriteAllText(
-            $stopScript,
-            $cmd,
-            [System.Text.Encoding]::ASCII
-        )
+        }
+        catch {
 
-        Start-Process `
-            -FilePath "cmd.exe" `
-            -ArgumentList "/c `"$stopScript`"" `
-            -WindowStyle Hidden
+            if (-not $listener.IsListening) {
+                break
+            }
 
-        return $true
-    }
-    catch {
+            continue
+        }
 
-        return $false
-    }
-}
+        if ($null -eq $context) {
+            continue
+        }
 
+        $request =
+            $context.Request
 
-# ============================================================
-# HTTP RESPONSE
-# ============================================================
+        $path =
+            $request.Url.AbsolutePath
 
-function Send-JsonResponse {
+        $method =
+            $request.HttpMethod
 
-    param(
-        [System.Net.HttpListenerContext]$Context,
-        $Data,
-        [int]$StatusCode = 200
-    )
+        $response =
+            $context.Response
 
-    try {
-
-        $json = $Data | ConvertTo-Json -Depth 30
-
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
-
-        $response = $Context.Response
-
-        $response.StatusCode = $StatusCode
-        $response.ContentType = "application/json; charset=utf-8"
-        $response.ContentEncoding = [System.Text.Encoding]::UTF8
-        $response.ContentLength64 = $bytes.Length
+        # ----------------------------------------------------
+        # CORS
+        # ----------------------------------------------------
 
         $response.Headers.Add(
             "Access-Control-Allow-Origin",
@@ -1335,574 +1541,467 @@ function Send-JsonResponse {
             "Content-Type"
         )
 
-        $response.OutputStream.Write(
-            $bytes,
-            0,
-            $bytes.Length
-        )
+        # ----------------------------------------------------
+        # OPTIONS
+        # ----------------------------------------------------
 
-        $response.OutputStream.Close()
-    }
-    catch {
-    }
-}
+        if ($method -eq "OPTIONS") {
 
+            $response.StatusCode = 204
+            $response.Close()
 
-# ============================================================
-# REQUEST BODY
-# ============================================================
-
-function Get-RequestBody {
-
-    param(
-        [System.Net.HttpListenerRequest]$Request
-    )
-
-    try {
-
-        if (-not $Request.HasEntityBody) {
-            return $null
+            continue
         }
 
-        $reader = New-Object System.IO.StreamReader(
-            $Request.InputStream,
-            $Request.ContentEncoding
-        )
+        # ----------------------------------------------------
+        # ROOT
+        # ----------------------------------------------------
 
-        $body = $reader.ReadToEnd()
-
-        $reader.Close()
-
-        if ([string]::IsNullOrWhiteSpace($body)) {
-            return $null
-        }
-
-        return $body | ConvertFrom-Json
-    }
-    catch {
-
-        return $null
-    }
-}
-
-
-# ============================================================
-# URL QUERY
-# ============================================================
-
-function Get-QueryValue {
-
-    param(
-        [System.Net.HttpListenerRequest]$Request,
-        [string]$Name
-    )
-
-    try {
-        return $Request.QueryString[$Name]
-    }
-    catch {
-        return $null
-    }
-}
-
-
-# ============================================================
-# REQUEST HANDLER
-# ============================================================
-
-function Handle-Request {
-
-    param(
-        [System.Net.HttpListenerContext]$Context
-    )
-
-    $request = $Context.Request
-    $path    = $request.Url.AbsolutePath
-    $method  = $request.HttpMethod.ToUpper()
-
-    # CORS preflight
-    if ($method -eq "OPTIONS") {
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data @{
-                success = $true
-            }
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # AGENT STATUS
-    # --------------------------------------------------------
-
-    if ($path -eq "/agent/status") {
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data ([ordered]@{
-                success  = $true
-                online   = $true
-                version  = $AgentVersion
-                agent    = $AgentName
-                pid      = $PID
-                computer = $env:COMPUTERNAME
-                user     = $env:USERNAME
-            })
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # AGENT STOP
-    # --------------------------------------------------------
-
-    if ($path -eq "/agent/stop") {
-
-        $started = Start-AgentStopWorker
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data ([ordered]@{
-                success = $started
-                message = if ($started) {
-                    "Agent is shutting down."
-                }
-                else {
-                    "Unable to start shutdown worker."
-                }
-            })
-
-        $global:StopRequested = $true
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # JOB START
-    # --------------------------------------------------------
-
-    if ($path -eq "/job/start" -and $method -eq "POST") {
-
-        $result = Start-NewJob
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data $result
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # JOB STATUS
-    # --------------------------------------------------------
-
-    if ($path -eq "/job/status") {
-
-        if ($null -ne $global:CurrentJob) {
+        if ($path -eq "/") {
 
             Send-JsonResponse `
-                -Context $Context `
-                -Data ([ordered]@{
+                $context `
+                @{
                     success = $true
-                    active  = $true
-                    job     = $global:CurrentJob
-                })
+                    agent =
+                        "IT Diagnostic Agent V5.1"
+                    version =
+                        "5.1"
+                    status =
+                        "online"
+                }
+
+            continue
         }
-        else {
+
+        # ----------------------------------------------------
+        # STATUS
+        # ----------------------------------------------------
+
+        if ($path -eq "/agent/status") {
 
             Send-JsonResponse `
-                -Context $Context `
-                -Data ([ordered]@{
+                $context `
+                @{
                     success = $true
-                    active  = $false
-                    job     = $null
-                })
+                    online = $true
+                    version = "5.1"
+                    agent =
+                        "IT Diagnostic Agent V5.1"
+                    pid = $PID
+                    computer =
+                        $env:COMPUTERNAME
+                    user =
+                        $env:USERNAME
+                }
+
+            continue
         }
 
-        return
-    }
+        # ----------------------------------------------------
+        # SYSTEM
+        # ----------------------------------------------------
 
+        if ($path -eq "/system") {
 
-    # --------------------------------------------------------
-    # JOB END
-    # --------------------------------------------------------
+            Send-JsonResponse `
+                $context `
+                @{
+                    success = $true
+                    data =
+                        Get-SystemInfo
+                }
 
-    if ($path -eq "/job/end" -and $method -eq "POST") {
-
-        $result = End-CurrentJob
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data $result
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # REPORT STATUS
-    # --------------------------------------------------------
-
-    if ($path -eq "/report/status") {
-
-        $jobId = Get-QueryValue `
-            -Request $request `
-            -Name "jobId"
-
-        $result = Get-ReportStatus -JobId $jobId
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data $result
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # REPORT OPEN
-    # --------------------------------------------------------
-
-    if ($path -eq "/report/open") {
-
-        $jobId = Get-QueryValue `
-            -Request $request `
-            -Name "jobId"
-
-        $result = Open-Report -JobId $jobId
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data $result
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # HISTORY
-    # --------------------------------------------------------
-
-    if ($path -eq "/history") {
-
-        $history = Get-History
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data ([ordered]@{
-                success = $true
-                history = $history
-            })
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # SYSTEM
-    # --------------------------------------------------------
-
-    if ($path -eq "/system") {
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data ([ordered]@{
-                success = $true
-                system  = Get-SystemInformation
-            })
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # METRICS
-    # --------------------------------------------------------
-
-    if ($path -eq "/metrics") {
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data ([ordered]@{
-                success = $true
-                metrics = Get-SystemMetrics
-            })
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # NETWORK
-    # --------------------------------------------------------
-
-    if ($path -eq "/network") {
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data ([ordered]@{
-                success = $true
-                network = Get-NetworkInformation
-            })
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # SERVICES
-    # --------------------------------------------------------
-
-    if ($path -eq "/services") {
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data ([ordered]@{
-                success  = $true
-                services = Get-ServiceInformation
-            })
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # PROCESSES
-    # --------------------------------------------------------
-
-    if ($path -eq "/processes") {
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data ([ordered]@{
-                success   = $true
-                processes = Get-ProcessInformation
-            })
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # PROCESS KILL
-    # --------------------------------------------------------
-
-    if (($path -eq "/process/kill") -or
-        ($path -eq "/kill")) {
-
-        $body = Get-RequestBody -Request $request
-
-        $processId = 0
-
-        if ($body) {
-
-            if ($body.pid) {
-                $processId = [int]$body.pid
-            }
-            elseif ($body.id) {
-                $processId = [int]$body.id
-            }
+            continue
         }
 
-        if ($processId -eq 0) {
+        # ----------------------------------------------------
+        # METRICS
+        # ----------------------------------------------------
 
-            $queryPid = Get-QueryValue `
-                -Request $request `
-                -Name "pid"
+        if ($path -eq "/metrics") {
 
-            if ($queryPid) {
-                $processId = [int]$queryPid
-            }
+            Send-JsonResponse `
+                $context `
+                @{
+                    success = $true
+                    data =
+                        Get-Metrics
+                }
+
+            continue
         }
 
-        $result = Kill-ProcessById -ProcessId $processId
+        # ----------------------------------------------------
+        # NETWORK
+        # ----------------------------------------------------
+
+        if ($path -eq "/network") {
+
+            Send-JsonResponse `
+                $context `
+                @{
+                    success = $true
+                    data =
+                        Get-NetworkInfo
+                }
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # SERVICES
+        # ----------------------------------------------------
+
+        if ($path -eq "/services") {
+
+            Send-JsonResponse `
+                $context `
+                @{
+                    success = $true
+                    data =
+                        Get-ServiceStatus
+                }
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # PROCESSES
+        # ----------------------------------------------------
+
+        if ($path -eq "/processes") {
+
+            Send-JsonResponse `
+                $context `
+                @{
+                    success = $true
+                    data =
+                        Get-ProcessStatus
+                }
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # EVENTS
+        # ----------------------------------------------------
+
+        if ($path -eq "/events") {
+
+            Send-JsonResponse `
+                $context `
+                @{
+                    success = $true
+                    data =
+                        Get-Events
+                }
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # DIAGNOSE
+        # ----------------------------------------------------
+
+        if ($path -eq "/diagnose") {
+
+            Send-JsonResponse `
+                $context `
+                @{
+                    success = $true
+                    data =
+                        Run-Diagnostics
+                }
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # START JOB
+        # ----------------------------------------------------
+
+        if (
+            $path -eq "/job/start" -and
+            $method -eq "POST"
+        ) {
+
+            Send-JsonResponse `
+                $context `
+                (Start-NewJob)
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # JOB STATUS
+        # ----------------------------------------------------
+
+        if ($path -eq "/job/status") {
+
+            Send-JsonResponse `
+                $context `
+                @{
+                    success = $true
+                    active =
+                        ($null -ne $global:CurrentJob)
+                    job =
+                        $global:CurrentJob
+                }
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # END JOB
+        # ----------------------------------------------------
+
+        if (
+            $path -eq "/job/end" -and
+            $method -eq "POST"
+        ) {
+
+            Send-JsonResponse `
+                $context `
+                (End-CurrentJob)
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # HISTORY
+        # ----------------------------------------------------
+
+        if ($path -eq "/history") {
+
+            Send-JsonResponse `
+                $context `
+                @{
+                    success = $true
+                    data =
+                        @($global:History)
+                }
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # KILL
+        # ----------------------------------------------------
+
+        if (
+            $path -eq "/kill" -and
+            $method -eq "POST"
+        ) {
+
+            try {
+
+                $data =
+                    Read-RequestBody `
+                        $request
+
+                $pidValue =
+                    [int]$data.pid
+
+                Send-JsonResponse `
+                    $context `
+                    (
+                        Stop-TargetProcess `
+                            -ProcessId $pidValue
+                    )
+            }
+            catch {
+
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $false
+                        message =
+                            $_.Exception.Message
+                    }
+            }
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # REPORT STATUS
+        # ----------------------------------------------------
+
+        if ($path -eq "/report/status") {
+
+            $jobId =
+                $request.QueryString["jobId"]
+
+            Send-JsonResponse `
+                $context `
+                (
+                    Get-ReportStatus `
+                        -JobId $jobId
+                )
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # REPORT OPEN
+        # ----------------------------------------------------
+
+        if ($path -eq "/report/open") {
+
+            $jobId =
+                $request.QueryString["jobId"]
+
+            $status =
+                Get-ReportStatus `
+                    -JobId $jobId
+
+            if ($status.ready) {
+
+                try {
+
+                    Start-Process `
+                        -FilePath $status.path
+
+                    Send-JsonResponse `
+                        $context `
+                        @{
+                            success = $true
+                            path =
+                                $status.path
+                        }
+
+                }
+                catch {
+
+                    Send-JsonResponse `
+                        $context `
+                        @{
+                            success = $false
+                            message =
+                                $_.Exception.Message
+                        }
+                }
+
+            }
+            else {
+
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $false
+                        ready = $false
+                        message =
+                            "Report is not ready."
+                    }
+            }
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # AGENT STOP
+        # ----------------------------------------------------
+
+        if (
+            $path -eq "/agent/stop" -and
+            $method -eq "POST"
+        ) {
+
+            $targetPid =
+                $PID
+
+            Send-JsonResponse `
+                $context `
+                @{
+                    success = $true
+                    message =
+                        "Agent stopping."
+                }
+
+            Start-Job -ScriptBlock {
+
+                param(
+                    $ProcessId,
+                    $TempDirectory
+                )
+
+                Start-Sleep `
+                    -Milliseconds 800
+
+                try {
+
+                    if (
+                        Test-Path
+                        $TempDirectory
+                    ) {
+
+                        Remove-Item `
+                            -Path $TempDirectory `
+                            -Recurse `
+                            -Force `
+                            -ErrorAction SilentlyContinue
+                    }
+
+                }
+                catch {
+                }
+
+                Start-Sleep `
+                    -Milliseconds 300
+
+                try {
+
+                    Stop-Process `
+                        -Id $ProcessId `
+                        -Force `
+                        -ErrorAction SilentlyContinue
+
+                }
+                catch {
+                }
+
+            } `
+            -ArgumentList `
+                $targetPid,
+                $AgentTempDir |
+            Out-Null
+
+            continue
+        }
+
+        # ----------------------------------------------------
+        # 404
+        # ----------------------------------------------------
 
         Send-JsonResponse `
-            -Context $Context `
-            -Data $result
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # EVENTS
-    # --------------------------------------------------------
-
-    if ($path -eq "/events") {
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data ([ordered]@{
-                success = $true
-                events  = Get-WindowsEvents
-            })
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # DIAGNOSE
-    # --------------------------------------------------------
-
-    if ($path -eq "/diagnose") {
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data ([ordered]@{
-                success     = $true
-                diagnostics = Invoke-Diagnostics
-            })
-
-        return
-    }
-
-
-    # --------------------------------------------------------
-    # FIX
-    # --------------------------------------------------------
-
-    if ($path -eq "/fix") {
-
-        $body = Get-RequestBody -Request $request
-
-        Send-JsonResponse `
-            -Context $Context `
-            -Data ([ordered]@{
+            $context `
+            @{
                 success = $false
-                message = "No automatic fix action was specified."
-                request = $body
-            })
-
-        return
+                message =
+                    "Endpoint not found."
+                path =
+                    $path
+            } `
+            404
     }
 
-
-    # --------------------------------------------------------
-    # NOT FOUND
-    # --------------------------------------------------------
-
-    Send-JsonResponse `
-        -Context $Context `
-        -StatusCode 404 `
-        -Data ([ordered]@{
-            success = $false
-            message = "Endpoint not found."
-            path    = $path
-        })
 }
-
-
-# ============================================================
-# START HTTP LISTENER
-# ============================================================
-
-Load-CurrentJob
-
-$listener = New-Object System.Net.HttpListener
-
-$listener.Prefixes.Add($AgentPrefix)
-
-try {
-
-    $listener.Start()
-
-    Write-Host ""
-    Write-Host "==============================================" -ForegroundColor Cyan
-    Write-Host " IT FIELD DIAGNOSTIC AGENT V5.1" -ForegroundColor Cyan
-    Write-Host "==============================================" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "Version : $AgentVersion"
-    Write-Host "PID     : $PID"
-    Write-Host "Computer: $env:COMPUTERNAME"
-    Write-Host "User    : $env:USERNAME"
-    Write-Host ""
-    Write-Host "Listening:"
-    Write-Host "http://127.0.0.1:$AgentPort/"
-    Write-Host ""
-    Write-Host "Endpoints:"
-    Write-Host "  /agent/status"
-    Write-Host "  /agent/stop"
-    Write-Host "  /job/start"
-    Write-Host "  /job/status"
-    Write-Host "  /job/end"
-    Write-Host "  /report/status"
-    Write-Host "  /report/open"
-    Write-Host "  /history"
-    Write-Host "  /system"
-    Write-Host "  /metrics"
-    Write-Host "  /network"
-    Write-Host "  /services"
-    Write-Host "  /processes"
-    Write-Host "  /process/kill"
-    Write-Host "  /events"
-    Write-Host "  /diagnose"
-    Write-Host ""
-    Write-Host "Agent is READY." -ForegroundColor Green
-    Write-Host ""
-
-}
-catch {
-
-    Write-Host ""
-    Write-Host "Unable to start HTTP listener." -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-Host ""
-
-    exit 1
-}
-
-
-# ============================================================
-# MAIN LOOP
-# ============================================================
-
-while ($listener.IsListening) {
-
-    if ($global:StopRequested) {
-        break
-    }
+finally {
 
     try {
 
-        $context = $listener.GetContext()
+        if ($listener.IsListening) {
+            $listener.Stop()
+        }
 
-        Handle-Request -Context $context
     }
     catch {
+    }
 
-        if (-not $global:StopRequested) {
-
-            Write-Host (
-                "Request error: " + $_.Exception.Message
-            ) -ForegroundColor Yellow
-        }
+    try {
+        $listener.Close()
+    }
+    catch {
     }
 }
-
-
-# ============================================================
-# CLEAN SHUTDOWN
-# ============================================================
-
-try {
-    $listener.Stop()
-}
-catch {
-}
-
-try {
-    $listener.Close()
-}
-catch {
-}
-
-Write-Host ""
-Write-Host "IT Diagnostic Agent V5.1 stopped." -ForegroundColor Yellow
-Write-Host ""

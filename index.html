@@ -1,1307 +1,3119 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0">
-
-<title>
-IT FIELD DIAGNOSTIC PORTAL V5
-</title>
+<title>IT FIELD DIAGNOSTIC PORTAL V5</title>
 
 <style>
-
 * {
     box-sizing: border-box;
 }
 
 body {
-
     margin: 0;
-
-    font-family:
-        Segoe UI,
-        Arial,
-        sans-serif;
-
-    background:
-        #0f172a;
-
-    color:
-        #e5e7eb;
+    font-family: Segoe UI, Arial, sans-serif;
+    background: #0f172a;
+    color: #e5e7eb;
 }
 
 header {
+    padding: 20px 28px;
+    background: #111827;
+    border-bottom: 1px solid #334155;
 
-    padding:
-        20px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 
-    background:
-        #111827;
-
-    border-bottom:
-        1px solid #334155;
-
-    display:
-        flex;
-
-    justify-content:
-        space-between;
-
-    align-items:
-        center;
-
-    gap:
-        20px;
-
-    flex-wrap:
-        wrap;
+    gap: 20px;
+    flex-wrap: wrap;
 }
 
 .title {
-
-    font-size:
-        24px;
-
-    font-weight:
-        700;
+    font-size: 24px;
+    font-weight: 700;
 }
 
 .subtitle {
-
-    color:
-        #94a3b8;
-
-    margin-top:
-        4px;
-
-    font-size:
-        13px;
+    color: #94a3b8;
+    margin-top: 4px;
+    font-size: 13px;
 }
 
 .status {
-
-    display:
-        flex;
-
-    align-items:
-        center;
-
-    gap:
-        8px;
-
-    font-weight:
-        600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
 }
 
 .dot {
-
-    width:
-        11px;
-
-    height:
-        11px;
-
-    border-radius:
-        50%;
-
-    background:
-        #ef4444;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #ef4444;
 }
 
 .dot.online {
-
-    background:
-        #22c55e;
+    background: #22c55e;
 }
 
 .container {
-
-    padding:
-        24px;
-
-    max-width:
-        1600px;
-
-    margin:
-        auto;
+    padding: 24px;
+    max-width: 1600px;
+    margin: auto;
 }
 
 .toolbar {
-
-    display:
-        flex;
-
-    gap:
-        12px;
-
-    flex-wrap:
-        wrap;
-
-    margin-bottom:
-        20px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
 }
 
 button {
+    border: 0;
+    border-radius: 8px;
+    padding: 12px 18px;
 
-    border:
-        0;
+    font-size: 14px;
+    font-weight: 700;
 
-    border-radius:
-        8px;
+    cursor: pointer;
 
-    padding:
-        12px 18px;
+    background: #334155;
+    color: white;
 
-    font-size:
-        14px;
-
-    font-weight:
-        700;
-
-    cursor:
-        pointer;
-
-    background:
-        #334155;
-
-    color:
-        white;
+    transition:
+        opacity .15s,
+        transform .15s;
 }
 
-button:hover {
-
-    opacity:
-        .88;
+button:hover:not(:disabled) {
+    opacity: .88;
+    transform: translateY(-1px);
 }
 
 button:disabled {
-
-    opacity:
-        .45;
-
-    cursor:
-        not-allowed;
+    opacity: .45;
+    cursor: not-allowed;
 }
 
 .start {
-
-    background:
-        #16a34a;
+    background: #16a34a;
 }
 
 .end {
-
-    background:
-        #dc2626;
+    background: #dc2626;
 }
 
 .stop {
-
-    background:
-        #b91c1c;
+    background: #7f1d1d;
 }
 
 .secondary {
-
-    background:
-        #475569;
+    background: #475569;
 }
 
 .card {
-
-    background:
-        #111827;
-
-    border:
-        1px solid #334155;
-
-    border-radius:
-        12px;
-
-    padding:
-        20px;
-
-    margin-bottom:
-        20px;
+    background: #111827;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
 }
 
 .card h2 {
-
-    margin-top:
-        0;
-
-    font-size:
-        18px;
-
-    border-bottom:
-        1px solid #334155;
-
-    padding-bottom:
-        10px;
+    margin-top: 0;
+    font-size: 18px;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 10px;
 }
 
 .grid {
-
-    display:
-        grid;
-
-    grid-template-columns:
-        repeat(
-            auto-fit,
-            minmax(
-                180px,
-                1fr
-            )
-        );
-
-    gap:
-        14px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
 }
 
 .metric {
-
-    background:
-        #1e293b;
-
-    border-radius:
-        9px;
-
-    padding:
-        16px;
+    background: #1e293b;
+    border-radius: 9px;
+    padding: 16px;
 }
 
 .metric-label {
-
-    color:
-        #94a3b8;
-
-    font-size:
-        12px;
-
-    text-transform:
-        uppercase;
+    color: #94a3b8;
+    font-size: 12px;
+    text-transform: uppercase;
 }
 
 .metric-value {
-
-    margin-top:
-        5px;
-
-    font-size:
-        24px;
-
-    font-weight:
-        700;
-
-    word-break:
-        break-word;
+    margin-top: 5px;
+    font-size: 24px;
+    font-weight: 700;
+    word-break: break-word;
 }
 
 table {
-
-    width:
-        100%;
-
-    border-collapse:
-        collapse;
-
-    font-size:
-        13px;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
 }
 
 th,
 td {
-
-    border-bottom:
-        1px solid #334155;
-
-    padding:
-        10px;
-
-    text-align:
-        left;
-
-    vertical-align:
-        top;
+    border-bottom: 1px solid #334155;
+    padding: 10px;
+    text-align: left;
+    vertical-align: top;
 }
 
 th {
-
-    color:
-        #94a3b8;
-
-    font-weight:
-        600;
+    color: #94a3b8;
+    font-weight: 600;
 }
 
 pre {
-
-    white-space:
-        pre-wrap;
-
-    word-break:
-        break-word;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #334155;
+}
 
-    display:
-        inline-block;
+.badge-online {
+    background: #166534;
+}
 
-    padding:
-        4px 8px;
+.badge-offline {
+    background: #7f1d1d;
+}
 
-    border-radius:
-        999px;
-
-    font-size:
-        11px;
-
-    font-weight:
-        700;
-
-    background:
-        #334155;
+.badge-warning {
+    background: #854d0e;
 }
 
 .job-active {
-
-    border:
-        1px solid #16a34a;
-}
-
-.job-none {
-
-    color:
-        #94a3b8;
+    border: 1px solid #16a34a;
 }
 
 .notice {
-
-    padding:
-        12px 16px;
-
-    border-radius:
-        8px;
-
-    background:
-        #1e293b;
-
-    margin-bottom:
-        18px;
-
-    display:
-        none;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: #1e293b;
+    margin-bottom: 18px;
+    display: none;
+    border-left: 4px solid #64748b;
 }
 
 .notice.show {
+    display: block;
+}
 
-    display:
-        block;
+.notice.success {
+    border-left-color: #22c55e;
+}
+
+.notice.error {
+    border-left-color: #ef4444;
+}
+
+.notice.warning {
+    border-left-color: #eab308;
+}
+
+.notice.info {
+    border-left-color: #3b82f6;
 }
 
 .report-box {
-
-    display:
-        none;
-
-    margin-top:
-        14px;
-
-    margin-bottom:
-        20px;
-
-    padding:
-        16px;
-
-    border:
-        1px solid #334155;
-
-    border-radius:
-        8px;
-
-    background:
-        #0f172a;
+    display: none;
+    margin-top: 14px;
+    padding: 16px;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: #0f172a;
 }
 
 .report-box.show {
-
-    display:
-        block;
+    display: block;
 }
 
 .report-ready {
+    border-color: #16a34a;
+}
 
-    border:
-        1px solid #16a34a;
+.report-waiting {
+    border-color: #eab308;
+}
+
+.report-title {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.report-status {
+    margin-top: 8px;
 }
 
 .muted {
-
-    color:
-        #94a3b8;
+    color: #94a3b8;
 }
 
 .section-hidden {
-
-    display:
-        none;
+    display: none;
 }
 
 .small-button {
-
-    padding:
-        6px 10px;
-
-    font-size:
-        12px;
+    padding: 6px 10px;
+    font-size: 12px;
 }
 
-.success-text {
-
-    color:
-        #4ade80;
+.empty {
+    padding: 20px;
+    text-align: center;
+    color: #94a3b8;
 }
 
-.warning-text {
-
-    color:
-        #facc15;
+.loading {
+    color: #94a3b8;
+    padding: 12px 0;
 }
 
-.error-text {
+.toolbar-info {
+    width: 100%;
+    color: #94a3b8;
+    font-size: 12px;
+}
 
-    color:
-        #f87171;
+.system-online {
+    color: #22c55e;
+}
+
+.system-offline {
+    color: #ef4444;
+}
+
+.problem {
+    padding: 14px;
+    border-bottom: 1px solid #334155;
+}
+
+.problem:last-child {
+    border-bottom: 0;
+}
+
+.problem-title {
+    font-weight: 700;
+}
+
+.problem-severity {
+    margin-top: 5px;
+    color: #fbbf24;
+}
+
+.problem-description {
+    margin-top: 8px;
+}
+
+.problem-fix {
+    margin-top: 8px;
+    color: #94a3b8;
 }
 
 @media (max-width: 800px) {
 
     .container {
-
-        padding:
-            14px;
+        padding: 14px;
     }
 
     header {
-
-        padding:
-            16px;
+        padding: 16px;
     }
 
     table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
 
-        display:
-            block;
-
-        overflow-x:
-            auto;
-
-        white-space:
-            nowrap;
+    .metric-value {
+        font-size: 19px;
     }
 }
-
 </style>
-
 </head>
-
 
 <body>
 
-
 <header>
 
-<div>
+    <div>
 
-<div class="title">
-IT FIELD DIAGNOSTIC PORTAL V5
-</div>
+        <div class="title">
+            IT FIELD DIAGNOSTIC PORTAL V5
+        </div>
 
-<div class="subtitle">
-Technician Diagnostic & Repair Portal
-</div>
+        <div class="subtitle">
+            Technician Diagnostic & Repair Portal
+        </div>
 
-</div>
+    </div>
 
+    <div class="status">
 
-<div class="status">
+        <span
+            id="statusDot"
+            class="dot">
+        </span>
 
-<span
-    id="statusDot"
-    class="dot">
-</span>
+        <span id="agentStatus">
+            Agent Offline
+        </span>
 
-<span id="agentStatus">
-Agent Offline
-</span>
-
-</div>
+    </div>
 
 </header>
 
-
 <div class="container">
 
+    <!-- TOOLBAR -->
 
-<!-- ===================================================== -->
-<!-- TOOLBAR -->
-<!-- ===================================================== -->
+    <div class="toolbar">
 
-<div class="toolbar">
+        <button
+            id="startButton"
+            class="start"
+            onclick="startNewJob()">
 
+            🚀 START NEW JOB
 
-<button
-    id="startButton"
-    class="start"
-    onclick="startNewJob()">
+        </button>
 
-🚀 START NEW JOB
+        <button
+            id="endButton"
+            class="end"
+            onclick="endJob()"
+            disabled>
 
-</button>
+            🔴 END JOB
 
+        </button>
 
-<button
-    id="endButton"
-    class="end"
-    onclick="endJob()"
-    disabled>
+        <button
+            id="stopButton"
+            class="stop"
+            onclick="stopAgent()"
+            disabled>
 
-🔴 END JOB
+            ⛔ STOP AGENT
 
-</button>
+        </button>
 
+        <button
+            id="refreshButton"
+            class="secondary"
+            onclick="refreshAll()">
 
-<button
-    id="stopAgentButton"
-    class="stop"
-    onclick="stopAgent()">
+            🔄 REFRESH
 
-🛑 STOP AGENT
+        </button>
 
-</button>
+        <div
+            id="toolbarInfo"
+            class="toolbar-info">
 
+            Checking local Agent...
 
-<button
-    id="refreshButton"
-    class="secondary"
-    onclick="refreshAll()">
+        </div>
 
-🔄 REFRESH
+    </div>
 
-</button>
+    <!-- NOTICE -->
 
+    <div
+        id="notice"
+        class="notice">
+    </div>
 
-</div>
-
-
-<!-- ===================================================== -->
-<!-- NOTICE -->
-<!-- ===================================================== -->
-
-<div
-    id="notice"
-    class="notice">
-</div>
-
-
-<!-- ===================================================== -->
-<!-- REPORT -->
-<!-- ===================================================== -->
-
-<div
-    id="reportBox"
-    class="report-box">
-
-
-<strong>
-📄 REPORT
-</strong>
-
-
-<div
-    id="reportStatus"
-    class="muted"
-    style="margin-top:8px;">
-
-No report available.
-
-</div>
-
-
-<div
-    id="reportPath"
-    class="muted"
-    style="margin-top:8px;">
-</div>
-
-
-<button
-    id="openReportButton"
-    class="secondary"
-    style="margin-top:12px;"
-    onclick="openReport()"
-    disabled>
-
-📄 OPEN REPORT
-
-</button>
-
-
-</div>
-
-
-<!-- ===================================================== -->
-<!-- DASHBOARD -->
-<!-- ===================================================== -->
-
-<div
-    id="dashboard"
-    class="section-hidden">
-
-
-<!-- ===================================================== -->
-<!-- CURRENT JOB -->
-<!-- ===================================================== -->
-
-<div
-    id="jobCard"
-    class="card job-active">
-
-<h2>
-Current Job
-</h2>
-
-
-<div class="grid">
-
-
-<div class="metric">
-
-<div class="metric-label">
-Job ID
-</div>
-
-<div
-    id="jobId"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-Computer
-</div>
-
-<div
-    id="jobComputer"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-Started
-</div>
-
-<div
-    id="jobStarted"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-</div>
-
-</div>
-
-
-<!-- ===================================================== -->
-<!-- SYSTEM -->
-<!-- ===================================================== -->
-
-<div class="card">
-
-<h2>
-System Information
-</h2>
-
-
-<div class="grid">
-
-
-<div class="metric">
-
-<div class="metric-label">
-Computer Name
-</div>
-
-<div
-    id="systemComputer"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-User
-</div>
-
-<div
-    id="systemUser"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-Manufacturer
-</div>
-
-<div
-    id="systemManufacturer"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-Model
-</div>
-
-<div
-    id="systemModel"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-Windows
-</div>
-
-<div
-    id="systemWindows"
-    class="metric-value">
--
-</div>
-
-</div>
+    <!-- REPORT -->
 
+    <div
+        id="reportBox"
+        class="report-box">
 
-<div class="metric">
+        <div class="report-title">
+            📄 Diagnostic Report
+        </div>
 
-<div class="metric-label">
-Build
-</div>
-
-<div
-    id="systemBuild"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-Architecture
-</div>
-
-<div
-    id="systemArchitecture"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-Memory
-</div>
-
-<div
-    id="systemMemory"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-</div>
-
-</div>
-
-
-<!-- ===================================================== -->
-<!-- HEALTH -->
-<!-- ===================================================== -->
-
-<div class="card">
-
-<h2>
-System Health
-</h2>
-
-
-<div class="grid">
-
-
-<div class="metric">
-
-<div class="metric-label">
-Health Score
-</div>
-
-<div
-    id="health"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-CPU
-</div>
-
-<div
-    id="cpu"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-RAM
-</div>
-
-<div
-    id="ram"
-    class="metric-value">
--
-</div>
+        <div
+            id="reportStatus"
+            class="report-status">
 
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-Disk C:
-</div>
-
-<div
-    id="disk"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-Free RAM
-</div>
-
-<div
-    id="ramFree"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-Free Disk
-</div>
-
-<div
-    id="diskFree"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-</div>
-
-</div>
-
-
-<!-- ===================================================== -->
-<!-- DIAGNOSTICS -->
-<!-- ===================================================== -->
-
-<div class="card">
-
-<h2>
-Diagnostics
-</h2>
-
-<div
-    id="diagnostics">
-Loading...
-</div>
-
-</div>
-
-
-<!-- ===================================================== -->
-<!-- NETWORK -->
-<!-- ===================================================== -->
-
-<div class="card">
+            Preparing report...
 
-<h2>
-Network
-</h2>
+        </div>
 
+        <div
+            id="reportPath"
+            class="muted"
+            style="margin-top:8px;">
+        </div>
 
-<div
-    id="networkStatus"
-    style="margin-bottom:15px;">
+        <button
+            id="openReportButton"
+            class="secondary"
+            style="margin-top:12px;"
+            onclick="openReport()"
+            disabled>
 
--
+            📄 OPEN REPORT
 
-</div>
-
-
-<table>
-
-<thead>
-
-<tr>
-
-<th>
-Interface
-</th>
-
-<th>
-IPv4
-</th>
+        </button>
 
-<th>
-Gateway
-</th>
+    </div>
 
-<th>
-DNS
-</th>
+    <!-- DASHBOARD -->
 
-</tr>
+    <div
+        id="dashboard"
+        class="section-hidden">
 
-</thead>
+        <!-- JOB -->
 
+        <div
+            id="jobCard"
+            class="card job-active">
 
-<tbody
-    id="networkTable">
-</tbody>
+            <h2>
+                Current Job
+            </h2>
 
-</table>
+            <div class="grid">
 
-</div>
+                <div class="metric">
 
+                    <div class="metric-label">
+                        Job ID
+                    </div>
 
-<!-- ===================================================== -->
-<!-- SERVICES -->
-<!-- ===================================================== -->
+                    <div
+                        id="jobId"
+                        class="metric-value">
+                        -
+                    </div>
 
-<div class="card">
+                </div>
 
-<h2>
-Services
-</h2>
+                <div class="metric">
+
+                    <div class="metric-label">
+                        Computer
+                    </div>
+
+                    <div
+                        id="jobComputer"
+                        class="metric-value">
+                        -
+                    </div>
+
+                </div>
+
+                <div class="metric">
+
+                    <div class="metric-label">
+                        Started
+                    </div>
+
+                    <div
+                        id="jobStarted"
+                        class="metric-value">
+                        -
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- SYSTEM -->
+
+        <div class="card">
+
+            <h2>
+                System Information
+            </h2>
+
+            <div class="grid">
+
+                <div class="metric">
+                    <div class="metric-label">
+                        Computer Name
+                    </div>
+
+                    <div
+                        id="systemComputer"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
+
+                <div class="metric">
+                    <div class="metric-label">
+                        User
+                    </div>
+
+                    <div
+                        id="systemUser"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
+
+                <div class="metric">
+                    <div class="metric-label">
+                        Manufacturer
+                    </div>
+
+                    <div
+                        id="systemManufacturer"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
+
+                <div class="metric">
+                    <div class="metric-label">
+                        Model
+                    </div>
+
+                    <div
+                        id="systemModel"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
+
+                <div class="metric">
+                    <div class="metric-label">
+                        Windows
+                    </div>
+
+                    <div
+                        id="systemWindows"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
+
+                <div class="metric">
+                    <div class="metric-label">
+                        Build
+                    </div>
+
+                    <div
+                        id="systemBuild"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
+
+                <div class="metric">
+                    <div class="metric-label">
+                        Architecture
+                    </div>
+
+                    <div
+                        id="systemArchitecture"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
+
+                <div class="metric">
+                    <div class="metric-label">
+                        Memory
+                    </div>
+
+                    <div
+                        id="systemMemory"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- HEALTH -->
+
+        <div class="card">
+
+            <h2>
+                System Health
+            </h2>
+
+            <div class="grid">
+
+                <div class="metric">
+                    <div class="metric-label">
+                        Health Score
+                    </div>
+
+                    <div
+                        id="health"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
+
+                <div class="metric">
+                    <div class="metric-label">
+                        CPU
+                    </div>
 
+                    <div
+                        id="cpu"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
 
-<table>
+                <div class="metric">
+                    <div class="metric-label">
+                        RAM
+                    </div>
 
-<thead>
+                    <div
+                        id="ram"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
 
-<tr>
+                <div class="metric">
+                    <div class="metric-label">
+                        Disk C:
+                    </div>
 
-<th>
-Name
-</th>
+                    <div
+                        id="disk"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
 
-<th>
-Display Name
-</th>
+                <div class="metric">
+                    <div class="metric-label">
+                        Free RAM
+                    </div>
 
-<th>
-Status
-</th>
+                    <div
+                        id="ramFree"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
 
-<th>
-Start Type
-</th>
+                <div class="metric">
+                    <div class="metric-label">
+                        Free Disk
+                    </div>
 
-</tr>
+                    <div
+                        id="diskFree"
+                        class="metric-value">
+                        -
+                    </div>
+                </div>
 
-</thead>
+            </div>
 
+        </div>
 
-<tbody
-    id="servicesTable">
-</tbody>
+        <!-- DIAGNOSTICS -->
 
-</table>
+        <div class="card">
 
-</div>
+            <h2>
+                Diagnostics
+            </h2>
 
+            <div
+                id="diagnostics"
+                class="loading">
 
-<!-- ===================================================== -->
-<!-- PROCESSES -->
-<!-- ===================================================== -->
+                Loading...
 
-<div class="card">
+            </div>
 
-<h2>
-Processes
-</h2>
+        </div>
 
+        <!-- NETWORK -->
 
-<table>
+        <div class="card">
 
-<thead>
+            <h2>
+                Network
+            </h2>
 
-<tr>
+            <div
+                id="networkStatus"
+                style="margin-bottom:15px;">
 
-<th>
-PID
-</th>
+                -
 
-<th>
-Name
-</th>
+            </div>
 
-<th>
-CPU
-</th>
+            <table>
 
-<th>
-Memory
-</th>
+                <thead>
 
-<th>
-Action
-</th>
+                    <tr>
+                        <th>Interface</th>
+                        <th>IPv4</th>
+                        <th>Gateway</th>
+                        <th>DNS</th>
+                    </tr>
 
-</tr>
+                </thead>
 
-</thead>
+                <tbody id="networkTable">
+                </tbody>
 
+            </table>
 
-<tbody
-    id="processesTable">
-</tbody>
+        </div>
 
-</table>
+        <!-- SERVICES -->
 
-</div>
+        <div class="card">
 
+            <h2>
+                Services
+            </h2>
 
-<!-- ===================================================== -->
-<!-- WINDOWS EVENTS -->
-<!-- ===================================================== -->
+            <table>
 
-<div class="card">
+                <thead>
 
-<h2>
-Windows Events
-</h2>
+                    <tr>
+                        <th>Name</th>
+                        <th>Display Name</th>
+                        <th>Status</th>
+                        <th>Start Type</th>
+                    </tr>
 
+                </thead>
 
-<table>
+                <tbody id="servicesTable">
+                </tbody>
 
-<thead>
+            </table>
 
-<tr>
+        </div>
 
-<th>
-Time
-</th>
+        <!-- PROCESSES -->
 
-<th>
-ID
-</th>
+        <div class="card">
 
-<th>
-Provider
-</th>
+            <h2>
+                Processes
+            </h2>
 
-<th>
-Level
-</th>
+            <table>
 
-<th>
-Message
-</th>
+                <thead>
 
-</tr>
+                    <tr>
+                        <th>PID</th>
+                        <th>Name</th>
+                        <th>CPU</th>
+                        <th>Memory</th>
+                        <th>Action</th>
+                    </tr>
 
-</thead>
+                </thead>
 
+                <tbody id="processesTable">
+                </tbody>
 
-<tbody
-    id="eventsTable">
-</tbody>
+            </table>
 
-</table>
+        </div>
 
-</div>
+        <!-- EVENTS -->
 
+        <div class="card">
 
-<!-- ===================================================== -->
-<!-- HISTORY -->
-<!-- ===================================================== -->
+            <h2>
+                Windows Events
+            </h2>
 
-<div class="card">
+            <table>
 
-<h2>
-Job History
-</h2>
+                <thead>
 
+                    <tr>
+                        <th>Time</th>
+                        <th>ID</th>
+                        <th>Provider</th>
+                        <th>Level</th>
+                        <th>Message</th>
+                    </tr>
 
-<table>
+                </thead>
 
-<thead>
+                <tbody id="eventsTable">
+                </tbody>
 
-<tr>
+            </table>
 
-<th>
-Job ID
-</th>
+        </div>
 
-<th>
-Computer
-</th>
+        <!-- HISTORY -->
 
-<th>
-Started
-</th>
+        <div class="card">
 
-<th>
-Ended
-</th>
+            <h2>
+                Job History
+            </h2>
 
-</tr>
+            <table>
 
-</thead>
+                <thead>
 
+                    <tr>
+                        <th>Job ID</th>
+                        <th>Computer</th>
+                        <th>Started</th>
+                        <th>Ended</th>
+                    </tr>
 
-<tbody
-    id="historyTable">
-</tbody>
+                </thead>
 
-</table>
+                <tbody id="historyTable">
+                </tbody>
 
-</div>
+            </table>
 
+        </div>
 
-</div>
+    </div>
 
 </div>
-
 
 <script>
 
+/* ============================================================
+   CONFIG
+   ============================================================ */
 
-// ============================================================
-// CONFIG
-// ============================================================
+const AGENT = "http://127.0.0.1:8765";
+const AGENT_VERSION = "5.1";
 
-const AGENT =
-    "http://127.0.0.1:8765";
+let currentJob = null;
+let lastReport = null;
 
+let refreshTimer = null;
+let reportTimer = null;
+let noticeTimer = null;
 
-const AGENT_PROTOCOL =
-    "itdiag://start";
-
-
-let currentJob =
-    null;
-
-
-let lastReport =
-    null;
+let startingJob = false;
+let stoppingAgent = false;
 
 
-let refreshTimer =
-    null;
+/* ============================================================
+   DOM
+   ============================================================ */
+
+function el(id) {
+    return document.getElementById(id);
+}
 
 
-let reportPolling =
-    null;
+/* ============================================================
+   API
+   ============================================================ */
+
+async function api(path, options = {}) {
+
+    const controller =
+        new AbortController();
+
+    const timeout =
+        setTimeout(
+            () => controller.abort(),
+            10000
+        );
+
+    try {
+
+        const response =
+            await fetch(
+                AGENT + path,
+                {
+                    ...options,
+
+                    cache: "no-store",
+
+                    signal:
+                        controller.signal,
+
+                    headers: {
+                        "Accept":
+                            "application/json",
+
+                        ...(options.body
+                            ? {
+                                "Content-Type":
+                                    "application/json"
+                            }
+                            : {}),
+
+                        ...(options.headers || {})
+                    }
+                }
+            );
+
+        let data = null;
+
+        try {
+            data = await response.json();
+        }
+        catch {
+            data = null;
+        }
+
+        if (!response.ok) {
+
+            throw new Error(
+                data && data.message
+                    ? data.message
+                    : "HTTP " + response.status
+            );
+        }
+
+        return data;
+
+    }
+    catch (error) {
+
+        if (error.name === "AbortError") {
+
+            throw new Error(
+                "Agent request timed out."
+            );
+        }
+
+        throw error;
+
+    }
+    finally {
+
+        clearTimeout(timeout);
+
+    }
+}
 
 
-// ============================================================
-// API
-// ============================================================
+/* ============================================================
+   DELAY
+   ============================================================ */
 
-async function api(
-    path,
-    options = {}
+function delay(ms) {
+
+    return new Promise(
+        resolve =>
+            setTimeout(
+                resolve,
+                ms
+            )
+    );
+}
+
+
+/* ============================================================
+   NOTICE
+   ============================================================ */
+
+function showNotice(
+    message,
+    duration = 5000,
+    type = "info"
 ) {
 
-    const response =
-        await fetch(
-            AGENT + path,
-            {
-                ...options,
+    const box =
+        el("notice");
 
-                headers: {
-                    "Content-Type":
-                        "application/json",
+    clearTimeout(
+        noticeTimer
+    );
 
-                    ...(
+    box.textContent =
+        message;
+
+    box.className =
+        "notice show " +
+        type;
+
+    if (duration > 0) {
+
+        noticeTimer =
+            setTimeout(
+                () => {
+
+                    box.className =
+                        "notice";
+
+                },
+                duration
+            );
+    }
+}
+
+
+/* ============================================================
+   BUTTON STATE
+   ============================================================ */
+
+function updateButtons(
+    agentOnline
+) {
+
+    const start =
+        el("startButton");
+
+    const end =
+        el("endButton");
+
+    const stop =
+        el("stopButton");
+
+    const refresh =
+        el("refreshButton");
+
+    if (startingJob ||
+        stoppingAgent) {
+
+        return;
+    }
+
+    refresh.disabled =
+        false;
+
+    if (currentJob) {
+
+        start.disabled =
+            true;
+
+        end.disabled =
+            false;
+
+        stop.disabled =
+            true;
+
+        el("toolbarInfo").textContent =
+            "Job is active. Complete diagnostics and click END JOB.";
+
+        return;
+    }
+
+    start.disabled =
+        false;
+
+    end.disabled =
+        true;
+
+    stop.disabled =
+        !agentOnline;
+
+    if (agentOnline) {
+
+        el("toolbarInfo").textContent =
+            "Agent V5.1 online. Ready to start a new job.";
+
+    }
+    else {
+
+        el("toolbarInfo").textContent =
+            "Agent offline. START NEW JOB will launch it.";
+
+    }
+}
+
+
+/* ============================================================
+   CHECK AGENT
+   ============================================================ */
+
+async function checkAgent() {
+
+    try {
+
+        const data =
+            await api(
+                "/agent/status"
+            );
+
+        if (
+            data &&
+            data.success === true &&
+            data.online === true
+        ) {
+
+            el("statusDot")
+                .classList.add("online");
+
+            el("agentStatus")
+                .textContent =
+                    "Agent Online V" +
+                    (data.version || "?");
+
+            updateButtons(true);
+
+            return data;
+        }
+
+    }
+    catch (error) {
+
+        /*
+         * Offline is expected when the Agent
+         * has not been launched yet.
+         */
+    }
+
+    el("statusDot")
+        .classList.remove("online");
+
+    el("agentStatus")
+        .textContent =
+            "Agent Offline";
+
+    updateButtons(false);
+
+    return null;
+}
+
+
+/* ============================================================
+   WAIT AGENT
+   ============================================================ */
+
+async function waitForAgent(
+    timeout = 15000
+) {
+
+    const started =
+        Date.now();
+
+    while (
+        Date.now() - started <
+        timeout
+    ) {
+
+        const data =
+            await checkAgent();
+
+        if (
+            data &&
+            data.online === true
+        ) {
+
+            return data;
+        }
+
+        await delay(500);
+    }
+
+    return null;
+}
+
+
+/* ============================================================
+   LAUNCH LOCAL AGENT
+   ============================================================ */
+
+function launchLocalAgent() {
+
+    /*
+     * Custom protocol registered by
+     * Install-ITDiag.ps1
+     */
+
+    try {
+
+        window.location.href =
+            "itdiag://start";
+
+        return true;
+
+    }
+    catch {
+
+        return false;
+
+    }
+}
+
+
+/* ============================================================
+   START NEW JOB
+   ============================================================ */
+
+async function startNewJob() {
+
+    if (startingJob) {
+        return;
+    }
+
+    if (currentJob) {
+
+        showNotice(
+            "A job is already active.",
+            5000,
+            "warning"
+        );
+
+        return;
+    }
+
+    startingJob =
+        true;
+
+    el("startButton").disabled =
+        true;
+
+    el("stopButton").disabled =
+        true;
+
+    try {
+
+        showNotice(
+            "Checking local diagnostic Agent...",
+            0,
+            "info"
+        );
+
+        let agent =
+            await checkAgent();
+
+        /*
+         * Agent offline:
+         * launch through itdiag://start
+         */
+
+        if (!agent) {
+
+            showNotice(
+                "Launching local diagnostic Agent...",
+                0,
+                "info"
+            );
+
+            const launched =
+                launchLocalAgent();
+
+            if (!launched) {
+
+                throw new Error(
+                    "Unable to launch itdiag://start."
+                );
+            }
+
+            agent =
+                await waitForAgent(
+                    15000
+                );
+        }
+
+        if (!agent) {
+
+            throw new Error(
+                "Local Agent did not start within 15 seconds."
+            );
+        }
+
+        if (
+            String(agent.version || "") !==
+            AGENT_VERSION
+        ) {
+
+            throw new Error(
+                "Wrong Agent version. Expected V" +
+                AGENT_VERSION +
+                " but received V" +
+                (agent.version || "unknown") +
+                "."
+            );
+        }
+
+        showNotice(
+            "Agent V5.1 online. Creating job...",
+            0,
+            "info"
+        );
+
+        const result =
+            await api(
+                "/job/start",
+                {
+                    method: "POST"
+                }
+            );
+
+        if (
+            !result ||
+            result.success !== true
+        ) {
+
+            throw new Error(
+                result && result.message
+                    ? result.message
+                    : "Unable to start job."
+            );
+        }
+
+        if (!result.job) {
+
+            throw new Error(
+                "Agent did not return job information."
+            );
+        }
+
+        currentJob =
+            result.job;
+
+        lastReport =
+            null;
+
+        stopAutoRefresh();
+
+        el("reportBox")
+            .classList.remove(
+                "show",
+                "report-ready",
+                "report-waiting"
+            );
+
+        el("reportStatus")
+            .textContent =
+            "Preparing report...";
+
+        el("reportPath")
+            .textContent =
+            "";
+
+        el("openReportButton")
+            .disabled =
+            true;
+
+        el("dashboard")
+            .classList.remove(
+                "section-hidden"
+            );
+
+        updateJobDisplay();
+
+        updateButtons(true);
+
+        el("endButton").disabled =
+            false;
+
+        el("stopButton").disabled =
+            true;
+
+        showNotice(
+            "Job started: " +
+            currentJob.id,
+            6000,
+            "success"
+        );
+
+        await refreshAll();
+
+        startAutoRefresh();
+
+    }
+    catch (error) {
+
+        currentJob =
+            null;
+
+        stopAutoRefresh();
+
+        showNotice(
+            "Unable to start job: " +
+            (error.message || error),
+            10000,
+            "error"
+        );
+
+    }
+    finally {
+
+        startingJob =
+            false;
+
+        const agent =
+            await checkAgent();
+
+        updateButtons(
+            !!agent
+        );
+    }
+}
+
+
+/* ============================================================
+   JOB DISPLAY
+   ============================================================ */
+
+function updateJobDisplay() {
+
+    if (!currentJob) {
+        return;
+    }
+
+    el("jobId")
+        .textContent =
+        currentJob.id ||
+        "-";
+
+    el("jobComputer")
+        .textContent =
+        currentJob.computer ||
+        "-";
+
+    el("jobStarted")
+        .textContent =
+        currentJob.startedAt ||
+        "-";
+}
+
+
+/* ============================================================
+   END JOB
+   ============================================================ */
+
+async function endJob() {
+
+    if (!currentJob) {
+
+        showNotice(
+            "There is no active job.",
+            5000,
+            "warning"
+        );
+
+        return;
+    }
+
+    const confirmed =
+        confirm(
+            "End this diagnostic job and generate the report?"
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+    const jobId =
+        currentJob.id;
+
+    el("startButton").disabled =
+        true;
+
+    el("endButton").disabled =
+        true;
+
+    el("stopButton").disabled =
+        true;
+
+    try {
+
+        showNotice(
+            "Ending job and generating report...",
+            0,
+            "info"
+        );
+
+        const result =
+            await api(
+                "/job/end",
+                {
+                    method: "POST"
+                }
+            );
+
+        if (
+            !result ||
+            result.success !== true
+        ) {
+
+            throw new Error(
+                result && result.message
+                    ? result.message
+                    : "Unable to end job."
+            );
+        }
+
+        currentJob =
+            null;
+
+        stopAutoRefresh();
+
+        el("dashboard")
+            .classList.add(
+                "section-hidden"
+            );
+
+        el("reportBox")
+            .classList.add(
+                "show",
+                "report-waiting"
+            );
+
+        el("reportBox")
+            .classList.remove(
+                "report-ready"
+            );
+
+        el("reportStatus")
+            .textContent =
+            "⏳ Report is being generated...";
+
+        lastReport =
+            result.report ||
+            null;
+
+        el("reportPath")
+            .textContent =
+            lastReport ||
+            "Waiting for report...";
+
+        el("openReportButton")
+            .disabled =
+            true;
+
+        await refreshHistory();
+
+        showNotice(
+            "Job ended. Waiting for report...",
+            0,
+            "info"
+        );
+
+        /*
+         * Wait until actual report file exists.
+         */
+
+        const ready =
+            await waitForReport(
+                jobId,
+                30000
+            );
+
+        if (ready) {
+
+            lastReport =
+                ready.path ||
+                lastReport;
+
+            el("reportStatus")
+                .textContent =
+                "✅ Report is ready.";
+
+            el("reportPath")
+                .textContent =
+                lastReport ||
+                "Report created.";
+
+            el("reportBox")
+                .classList.remove(
+                    "report-waiting"
+                );
+
+            el("reportBox")
+                .classList.add(
+                    "report-ready"
+                );
+
+            el("openReportButton")
+                .disabled =
+                false;
+
+            showNotice(
+                "Report is ready.",
+                5000,
+                "success"
+            );
+
+            /*
+             * Open while Agent is still alive.
+             */
+
+            await openReport(
+                true
+            );
+
+        }
+        else {
+
+            el("reportStatus")
+                .textContent =
+                "⚠️ Report is still finishing.";
+
+            showNotice(
+                "Report is still being generated. Check Desktop\\ITDiag-Reports.",
+                9000,
+                "warning"
+            );
+        }
+
+        /*
+         * Stop Agent after report generation.
+         */
+
+        await stopAgent(
+            true
+        );
+
+        await delay(1500);
+
+        await checkAgent();
+
+        updateButtons(false);
+
+        showNotice(
+            "Ready for next job.",
+            6000,
+            "success"
+        );
+
+    }
+    catch (error) {
+
+        showNotice(
+            "Unable to end job: " +
+            (error.message || error),
+            10000,
+            "error"
+        );
+
+        el("startButton")
+            .disabled =
+            false;
+
+        el("endButton")
+            .disabled =
+            false;
+
+        el("stopButton")
+            .disabled =
+            true;
+    }
+}
+
+
+/* ============================================================
+   WAIT REPORT
+   ============================================================ */
+
+async function waitForReport(
+    jobId,
+    timeout = 30000
+) {
+
+    const started =
+        Date.now();
+
+    clearInterval(
+        reportTimer
+    );
+
+    while (
+        Date.now() - started <
+        timeout
+    ) {
+
+        try {
+
+            const result =
+                await api(
+                    "/report/status?jobId=" +
+                    encodeURIComponent(jobId)
+                );
+
+            if (
+                result &&
+                result.ready === true
+            ) {
+
+                return {
+                    path:
+                        result.path ||
+                        result.report ||
+                        (
+                            result.data &&
+                            result.data.path
+                        )
+                };
+            }
+
+        }
+        catch {
+        }
+
+        await delay(800);
+    }
+
+    return null;
+}
+
+
+/* ============================================================
+   OPEN REPORT
+   ============================================================ */
+
+async function openReport(
+    automatic = false
+) {
+
+    if (!lastReport) {
+
+        if (!automatic) {
+
+            showNotice(
+                "No report path is available.",
+                6000,
+                "warning"
+            );
+        }
+
+        return false;
+    }
+
+    /*
+     * Extract JOB-xxxx from:
+     *
+     * C:\...\Desktop\ITDiag-Reports\JOB-xxxx.html
+     */
+
+    let jobId =
+        null;
+
+    const match =
+        String(lastReport)
+            .match(
+                /ITDiag-Reports[\\/]+([^\\/]+)\.html$/i
+            );
+
+    if (match) {
+        jobId = match[1];
+    }
+
+    /*
+     * Preferred method:
+     * Agent opens Windows file.
+     */
+
+    if (jobId) {
+
+        try {
+
+            const result =
+                await api(
+                    "/report/open?jobId=" +
+                    encodeURIComponent(jobId)
+                );
+
+            if (
+                result &&
+                result.success === true
+            ) {
+
+                if (!automatic) {
+
+                    showNotice(
+                        "Report opened.",
+                        5000,
+                        "success"
+                    );
+                }
+
+                return true;
+            }
+
+        }
+        catch {
+        }
+    }
+
+    /*
+     * Fallback to file://
+     */
+
+    try {
+
+        const fileUrl =
+            "file:///" +
+            String(lastReport)
+                .replaceAll(
+                    "\\",
+                    "/"
+                );
+
+        window.open(
+            fileUrl,
+            "_blank"
+        );
+
+        if (!automatic) {
+
+            showNotice(
+                "Opening report file...",
+                5000,
+                "info"
+            );
+        }
+
+        return true;
+
+    }
+    catch {
+    }
+
+    if (!automatic) {
+
+        showNotice(
+            "Unable to open report automatically. File: " +
+            lastReport,
+            8000,
+            "warning"
+        );
+    }
+
+    return false;
+}
+
+
+/* ============================================================
+   STOP AGENT
+   ============================================================ */
+
+async function stopAgent(
+    silent = false
+) {
+
+    if (stoppingAgent) {
+        return;
+    }
+
+    if (currentJob) {
+
+        if (!silent) {
+
+            showNotice(
+                "Cannot stop Agent while a job is active. End the job first.",
+                7000,
+                "warning"
+            );
+        }
+
+        return;
+    }
+
+    if (!silent) {
+
+        const confirmed =
+            confirm(
+                "Stop the local IT Diagnostic Agent?"
+            );
+
+        if (!confirmed) {
+            return;
+        }
+    }
+
+    stoppingAgent =
+        true;
+
+    el("startButton")
+        .disabled =
+        true;
+
+    el("endButton")
+        .disabled =
+        true;
+
+    el("stopButton")
+        .disabled =
+        true;
+
+    try {
+
+        /*
+         * Agent intentionally closes shortly
+         * after returning this request.
+         *
+         * Therefore failure here is acceptable.
+         */
+
+        try {
+
+            await api(
+                "/agent/stop",
+                {
+                    method: "POST"
+                }
+            );
+
+        }
+        catch {
+        }
+
+        await delay(
+            1500
+        );
+
+        await checkAgent();
+
+        if (!silent) {
+
+            showNotice(
+                "Local Agent stopped.",
+                5000,
+                "success"
+            );
+        }
+
+    }
+    finally {
+
+        stoppingAgent =
+            false;
+
+        const online =
+            await checkAgent();
+
+        updateButtons(
+            !!online
+        );
+    }
+}
+
+
+/* ============================================================
+   SYSTEM
+   ============================================================ */
+
+async function refreshSystem() {
+
+    try {
+
+        const result =
+            await api(
+                "/system"
+            );
+
+        const data =
+            result.data ||
+            {};
+
+        /*
+         * IMPORTANT:
+         * Start-Agent.ps1 returns:
+         * computer
+         * user
+         */
+
+        el("systemComputer")
+            .textContent =
+            data.computer ||
+            "-";
+
+        el("systemUser")
+            .textContent =
+            data.user ||
+            "-";
+
+        el("systemManufacturer")
+            .textContent =
+            data.manufacturer ||
+            "-";
+
+        el("systemModel")
+            .textContent =
+            data.model ||
+            "-";
+
+        el("systemWindows")
+            .textContent =
+            data.windows ||
+            "-";
+
+        el("systemBuild")
+            .textContent =
+            data.build ||
+            "-";
+
+        el("systemArchitecture")
+            .textContent =
+            data.architecture ||
+            "-";
+
+        el("systemMemory")
+            .textContent =
+            (
+                data.memoryGB !== undefined
+                    ? data.memoryGB
+                    : 0
+            ) +
+            " GB";
+
+    }
+    catch (error) {
+
+        console.warn(
+            "refreshSystem",
+            error
+        );
+    }
+}
+
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+
+async function refreshMetrics() {
+
+    try {
+
+        const result =
+            await api(
+                "/metrics"
+            );
+
+        const data =
+            result.data ||
+            {};
+
+        el("cpu")
+            .textContent =
+            formatValue(
+                data.cpu,
+                "%"
+            );
+
+        el("ram")
+            .textContent =
+            formatValue(
+                data.ram,
+                "%"
+            );
+
+        el("disk")
+            .textContent =
+            formatValue(
+                data.disk,
+                "%"
+            );
+
+        el("ramFree")
+            .textContent =
+            formatValue(
+                data.ramFreeGB,
+                " GB"
+            );
+
+        el("diskFree")
+            .textContent =
+            formatValue(
+                data.diskFreeGB,
+                " GB"
+            );
+
+    }
+    catch (error) {
+
+        console.warn(
+            "refreshMetrics",
+            error
+        );
+    }
+}
+
+
+/* ============================================================
+   DIAGNOSTICS
+   ============================================================ */
+
+async function refreshDiagnostics() {
+
+    try {
+
+        const result =
+            await api(
+                "/diagnose"
+            );
+
+        const data =
+            result.data ||
+            {};
+
+        el("health")
+            .textContent =
+            formatValue(
+                data.health,
+                " / 100"
+            );
+
+        const box =
+            el("diagnostics");
+
+        const problems =
+            Array.isArray(data.problems)
+                ? data.problems
+                : [];
+
+        if (
+            problems.length === 0
+        ) {
+
+            box.innerHTML =
+                `
+                <div class="badge badge-online">
+                    NO DETECTED PROBLEMS
+                </div>
+                `;
+
+            return;
+        }
+
+        box.innerHTML =
+            problems
+                .map(
+                    problem => `
+                    <div class="problem">
+
+                        <div class="problem-title">
+                            ${escapeHtml(
+                                problem.title ||
+                                "Problem"
+                            )}
+                        </div>
+
+                        <div class="problem-severity">
+                            Severity:
+                            ${escapeHtml(
+                                problem.severity ||
+                                "Unknown"
+                            )}
+                        </div>
+
+                        <div class="problem-description">
+                            ${escapeHtml(
+                                problem.description ||
+                                ""
+                            )}
+                        </div>
+
+                        <div class="problem-fix">
+                            Recommended Fix:
+                            ${escapeHtml(
+                                problem.recommendedFix ||
+                                ""
+                            )}
+                        </div>
+
+                    </div>
+                    `
+                )
+                .join("");
+
+    }
+    catch (error) {
+
+        console.warn(
+            "refreshDiagnostics",
+            error
+        );
+    }
+}
+
+
+/* ============================================================
+   NETWORK
+   ============================================================ */
+
+async function refreshNetwork() {
+
+    try {
+
+        const result =
+            await api(
+                "/network"
+            );
+
+        const data =
+            result.data ||
+            {};
+
+        const internet =
+            !!data.internet;
+
+        el("networkStatus")
+            .innerHTML =
+                internet
+                    ? `
+                        <span class="badge badge-online">
+                            🌐 Internet: ONLINE
+                        </span>
+                      `
+                    : `
+                        <span class="badge badge-offline">
+                            ⚠️ Internet: OFFLINE
+                        </span>
+                      `;
+
+        const table =
+            el("networkTable");
+
+        table.innerHTML =
+            "";
+
+        const adapters =
+            Array.isArray(data.adapters)
+                ? data.adapters
+                : [];
+
+        if (
+            adapters.length === 0
+        ) {
+
+            table.innerHTML =
+                `
+                <tr>
+                    <td
+                        colspan="4"
+                        class="empty">
+
+                        No network adapters found.
+
+                    </td>
+                </tr>
+                `;
+
+            return;
+        }
+
+        for (
+            const item of adapters
+        ) {
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+            row.innerHTML =
+                `
+                <td>
+                    ${escapeHtml(
+                        item.interface ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.ipv4 ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.gateway ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.dns ||
+                        ""
+                    )}
+                </td>
+                `;
+
+            table.appendChild(
+                row
+            );
+        }
+
+    }
+    catch (error) {
+
+        console.warn(
+            "refreshNetwork",
+            error
+        );
+    }
+}
+
+
+/* ============================================================
+   SERVICES
+   ============================================================ */
+
+async function refreshServices() {
+
+    try {
+
+        const result =
+            await api(
+                "/services"
+            );
+
+        const table =
+            el("servicesTable");
+
+        table.innerHTML =
+            "";
+
+        const services =
+            Array.isArray(result.data)
+                ? result.data
+                : [];
+
+        if (
+            services.length === 0
+        ) {
+
+            table.innerHTML =
+                `
+                <tr>
+                    <td
+                        colspan="4"
+                        class="empty">
+
+                        No services returned.
+
+                    </td>
+                </tr>
+                `;
+
+            return;
+        }
+
+        for (
+            const item of services
+        ) {
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+            row.innerHTML =
+                `
+                <td>
+                    ${escapeHtml(
+                        item.name ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.displayName ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.status ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.startType ||
+                        ""
+                    )}
+                </td>
+                `;
+
+            table.appendChild(
+                row
+            );
+        }
+
+    }
+    catch (error) {
+
+        console.warn(
+            "refreshServices",
+            error
+        );
+    }
+}
+
+
+/* ============================================================
+   PROCESSES
+   ============================================================ */
+
+async function refreshProcesses() {
+
+    try {
+
+        const result =
+            await api(
+                "/processes"
+            );
+
+        const table =
+            el("processesTable");
+
+        table.innerHTML =
+            "";
+
+        const processes =
+            Array.isArray(result.data)
+                ? result.data
+                : [];
+
+        if (
+            processes.length === 0
+        ) {
+
+            table.innerHTML =
+                `
+                <tr>
+                    <td
+                        colspan="5"
+                        class="empty">
+
+                        No processes returned.
+
+                    </td>
+                </tr>
+                `;
+
+            return;
+        }
+
+        for (
+            const item of processes
+        ) {
+
+            const pid =
+                Number(item.id);
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+            row.innerHTML =
+                `
+                <td>
+                    ${escapeHtml(
+                        item.id ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.name ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.cpu ||
+                        0
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.memoryMB ||
+                        0
+                    )}
+                    MB
+                </td>
+
+                <td>
+
+                    <button
+                        class="small-button"
+                        onclick="killProcess(${pid})">
+
+                        Kill
+
+                    </button>
+
+                </td>
+                `;
+
+            table.appendChild(
+                row
+            );
+        }
+
+    }
+    catch (error) {
+
+        console.warn(
+            "refreshProcesses",
+            error
+        );
+    }
+}
+
+
+/* ============================================================
+   KILL PROCESS
+   ============================================================ */
+
+async function killProcess(pid) {
+
+    const numberPid =
+        Number(pid);
+
+    if (
+        !Number.isInteger(numberPid) ||
+        numberPid <= 0
+    ) {
+
+        showNotice(
+            "Invalid process ID.",
+            5000,
+            "error"
+        );
+
+        return;
+    }
+
+    if (
+        numberPid === 4
+    ) {
+
+        showNotice(
+            "PID 4 is protected and cannot be terminated.",
+            6000,
+            "warning"
+        );
+
+        return;
+    }
+
+    const confirmed =
+        confirm(
+            "Terminate process PID " +
+            numberPid +
+            "?"
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+
+        const result =
+            await api(
+                "/kill",
+                {
+                    method: "POST",
+
+                    body:
+                        JSON.stringify({
+                            pid:
+                                numberPid
+                        })
+                }
+            );
+
+        showNotice(
+            result.message ||
+            "Process action completed.",
+            6000,
+            result.success === false
+                ? "error"
+                : "success"
+        );
+
+        await delay(500);
+
+        await refreshProcesses();
+
+    }
+    catch (error) {
+
+        showNotice(
+            "Process action failed: " +
+            error.message,
+            8000,
+            "error"
+        );
+    }
+}
+
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+
+async function refreshEvents() {
+
+    try {
+
+        const result =
+            await api(
+                "/events"
+            );
+
+        const table =
+            el("eventsTable");
+
+        table.innerHTML =
+            "";
+
+        const events =
+            Array.isArray(result.data)
+                ? result.data
+                : [];
+
+        if (
+            events.length === 0
+        ) {
+
+            table.innerHTML =
+                `
+                <tr>
+                    <td
+                        colspan="5"
+                        class="empty">
+
+                        No Windows events returned.
+
+                    </td>
+                </tr>
+                `;
+
+            return;
+        }
+
+        for (
+            const item of events
+        ) {
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+            row.innerHTML =
+                `
+                <td>
+                    ${escapeHtml(
+                        item.time ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.id ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.provider ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.level ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.message ||
+                        ""
+                    )}
+                </td>
+                `;
+
+            table.appendChild(
+                row
+            );
+        }
+
+    }
+    catch (error) {
+
+        console.warn(
+            "refreshEvents",
+            error
+        );
+    }
+}
+
+
+/* ============================================================
+   HISTORY
+   ============================================================ */
+
+async function refreshHistory() {
+
+    try {
+
+        const result =
+            await api(
+                "/history"
+            );
+
+        const table =
+            el("historyTable");
+
+        table.innerHTML =
+            "";
+
+        const history =
+            Array.isArray(result.data)
+                ? result.data
+                : [];
+
+        if (
+            history.length === 0
+        ) {
+
+            table.innerHTML =
+                `
+                <tr>
+                    <td
+                        colspan="4"
+                        class="empty">
+
+                        No job history.
+
+                    </td>
+                </tr>
+                `;
+
+            return;
+        }
+
+        for (
+            const item of history
+                .slice()
+                .reverse()
+        ) {
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+            row.innerHTML =
+                `
+                <td>
+                    ${escapeHtml(
+                        item.id ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.computer ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.startedAt ||
+                        ""
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.endedAt ||
+                        ""
+                    )}
+                </td>
+                `;
+
+            table.appendChild(
+                row
+            );
+        }
+
+    }
+    catch (error) {
+
+        console.warn(
+            "refreshHistory",
+            error
+        );
+    }
+}
+
+
+/* ============================================================
+   REFRESH ALL
+   ============================================================ */
+
+async function refreshAll() {
+
+    const agent =
+        await checkAgent();
+
+    if (!agent) {
+
+        return;
+    }
+
+    try {
+
+        await Promise.all([
+
+            refreshSystem(),
+
+            refreshMetrics(),
+
+            refreshDiagnostics(),
+
+            refreshNetwork(),
+
+            refreshServices(),
+
+            refreshProcesses(),
+
+            refreshEvents(),
+
+            refreshHistory()
+
+        ]);
+
+    }
+    catch (error) {
+
+        console.warn(
+            "refreshAll",
+            error
+        );
+    }
+}
+
+
+/* ============================================================
+   AUTO REFRESH
+   ============================================================ */
+
+function startAutoRefresh() {
+
+    stopAutoRefresh();
+
+    refreshTimer =
+        setInterval(
+            async () => {
+
+                if (!currentJob) {
+                    return;
+                }
+
+                try {
+
+                    await Promise.all([
+
+                        refreshMetrics(),
+
+                        refreshDiagnostics(),
+
+                        refreshNetwork(),
+
+                        refreshServices(),
+
+                        refreshProcesses(),
+
+                        refreshEvents()
+
+                    ]);
+
+                }
+                catch (error) {
+
+                    console.warn(
+                        "auto refresh",
+                        error
+                    );
+                }
+
+            },
+            5000
+        );
+}
+
+
+/* ============================================================
+   STOP AUTO REFRESH
+   ============================================================ */
+
+function stopAutoRefresh() {
+
+    if (refreshTimer) {
+
+        clearInterval(
+            refreshTimer
+        );
+
+        refreshTimer =
+            null;
+    }
+}
+
+
+/* ============================================================
+   FORMAT
+   ============================================================ */
+
+function formatValue(
+    value,
+    suffix = ""
+) {
+
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+
+        return "-";
+    }
+
+    return String(value) +
+        suffix;
+}
+
+
+/* ============================================================
+   HTML ESCAPE
+   ============================================================ */
+
+function escapeHtml(
+    value
+) {
+
+    return String(
+        value ?? ""
+    )
+
+    .replaceAll(
+        "&",
+        "&amp;"
+    )
+
+    .replaceAll(
+        "<",
+        "&lt;"
+    )
+
+    .replaceAll(
+        ">",
+        "&gt;"
+    )
+
+    .replaceAll(
+        '"',
+        "&quot;"
+    )
+
+    .replaceAll(
+        "'",
+        "&#039;"
+    );
+}
+
+
+/* ============================================================
+   VISIBILITY
+   ============================================================ */
+
+document.addEventListener(
+    "visibilitychange",
+    async () => {
+
+        if (
+            !document.hidden &&
+            currentJob
+        ) {
+
+            await refreshAll();
+        }
+
+    }
+);
+
+
+/* ============================================================
+   INITIALIZE
+   ============================================================ */
+
+(async function init() {
+
+    /*
+     * First check Agent.
+     */
+
+    const agent =
+        await checkAgent();
+
+    /*
+     * If Agent is already online,
+     * load history immediately.
+     */
+
+    if (agent) {
+
+        await refreshHistory();
+
+    }
+
+})();
+
+</script>
+
+</body>
+</html>
