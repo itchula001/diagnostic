@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -8,7 +9,7 @@
 <meta name="viewport"
       content="width=device-width, initial-scale=1.0">
 
-<title>IT FIELD DIAGNOSTIC PORTAL V5</title>
+<title>IT FIELD DIAGNOSTIC PORTAL V5.2.2</title>
 
 <style>
 
@@ -124,6 +125,15 @@ button:disabled {
 .small-button {
     padding: 6px 10px;
     font-size: 12px;
+}
+
+.refresh-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #94a3b8;
+    font-size: 12px;
+    margin-left: 4px;
 }
 
 .card {
@@ -452,11 +462,11 @@ tr:hover {
 <div>
 
 <div class="title">
-IT FIELD DIAGNOSTIC PORTAL V5
+IT FIELD DIAGNOSTIC PORTAL V5.2.2
 </div>
 
 <div class="subtitle">
-Technician Diagnostic & Repair Portal
+Technician Diagnostic & Repair Portal V5.2.2
 </div>
 
 </div>
@@ -504,13 +514,11 @@ Agent Offline
 </button>
 
 
-<button
-    class="secondary"
-    onclick="refreshAll()">
-
-🔄 REFRESH
-
-</button>
+<span
+    id="refreshStatus"
+    class="refresh-status">
+    Auto Refresh: ON · Last Updated: -
+</span>
 
 
 <button
@@ -1075,7 +1083,7 @@ History
 <div class="card">
 
 <h2>
-💻 System Information
+🖥 System
 </h2>
 
 
@@ -1225,35 +1233,11 @@ Serial
 <div class="card">
 
 <h2>
-❤️ System Health
+📈 Performance
 </h2>
 
 
 <div class="grid">
-
-
-<div class="metric">
-
-<div class="metric-label">
-Health Score
-</div>
-
-<div
-    id="health"
-    class="metric-value">
--
-</div>
-
-<div class="progress">
-
-<div
-    id="healthBar"
-    class="progress-bar">
-</div>
-
-</div>
-
-</div>
 
 
 <div class="metric">
@@ -1289,22 +1273,7 @@ RAM
 <div class="metric">
 
 <div class="metric-label">
-Disk C:
-</div>
-
-<div
-    id="disk"
-    class="metric-value">
--
-</div>
-
-</div>
-
-
-<div class="metric">
-
-<div class="metric-label">
-Free RAM
+RAM Free
 </div>
 
 <div
@@ -1319,7 +1288,22 @@ Free RAM
 <div class="metric">
 
 <div class="metric-label">
-Free Disk
+Disk
+</div>
+
+<div
+    id="disk"
+    class="metric-value">
+-
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="metric-label">
+Disk Free
 </div>
 
 <div
@@ -1342,12 +1326,8 @@ Free Disk
 🩺 Diagnostics
 </h2>
 
-
 <div
     id="diagnostics">
-
-Loading...
-
 </div>
 
 </div>
@@ -1374,7 +1354,7 @@ Loading...
 
 <div
     id="networkStatus"
-    style="margin-bottom:15px;">
+    class="summary-box">
 -
 </div>
 
@@ -1432,7 +1412,7 @@ DNS
 <div class="card">
 
 <h2>
-⚙️ Services
+⚙ Windows Services
 </h2>
 
 
@@ -1489,7 +1469,7 @@ Start Type
 <div class="card">
 
 <h2>
-🖥️ Processes
+📋 Processes
 </h2>
 
 
@@ -1514,11 +1494,7 @@ CPU
 </th>
 
 <th>
-Memory
-</th>
-
-<th>
-Action
+Memory MB
 </th>
 
 </tr>
@@ -1670,6 +1646,9 @@ Status
 </div>
 
 
+</div>
+
+
 <script>
 
 
@@ -1690,6 +1669,13 @@ let currentDiagnostics = null;
 
 let actionLog = [];
 
+let refreshInProgress = false;
+let lastRefreshAt = 0;
+let lastAgentOnline = false;
+let agentStatusFailures = 0;
+let statusCheckInProgress = false;
+let endJobRunning = false;
+
 
 // ============================================================
 // API
@@ -1700,10 +1686,21 @@ async function api(path, options = {}) {
     const controller =
         new AbortController();
 
+    const timeoutMs =
+        Number.isFinite(options.timeoutMs)
+            ? options.timeoutMs
+            : 10000;
+
+    const requestOptions = {
+        ...options
+    };
+
+    delete requestOptions.timeoutMs;
+
     const timeout =
         setTimeout(
             () => controller.abort(),
-            10000
+            timeoutMs
         );
 
     try {
@@ -1712,29 +1709,23 @@ async function api(path, options = {}) {
             await fetch(
                 AGENT + path,
                 {
-                    ...options,
-
-                    signal:
-                        controller.signal,
-
+                    ...requestOptions,
+                    cache: "no-store",
+                    signal: controller.signal,
                     headers: {
                         "Content-Type":
                             "application/json",
-
-                        ...(options.headers || {})
+                        ...(requestOptions.headers || {})
                     }
                 }
             );
 
-
         if (!response.ok) {
-
             throw new Error(
                 "HTTP " +
                 response.status
             );
         }
-
 
         return await response.json();
 
@@ -1802,73 +1793,280 @@ function showNotice(
 
 
 // ============================================================
+// REFRESH STATUS
+// V5.2.3
+// ============================================================
+
+function setRefreshStatus(message) {
+
+    const element =
+        document.getElementById(
+            "refreshStatus"
+        );
+
+
+    if (!element) {
+
+        return;
+
+    }
+
+
+    element.textContent =
+        message || "";
+
+}
+
+
+// ============================================================
 // AGENT STATUS
+// V5.2.3
 // ============================================================
 
 async function checkAgent() {
+
+    if (statusCheckInProgress) {
+
+        return lastAgentOnline;
+
+    }
+
+
+    statusCheckInProgress = true;
+
 
     try {
 
         const data =
             await api(
-                "/agent/status"
+                "/agent/status",
+                {
+                    timeoutMs: 5000
+                }
             );
 
 
+        // ========================================================
+        // AGENT ONLINE
+        // ========================================================
+
         if (
+            data &&
             data.success &&
             data.online
         ) {
 
-            document
-                .getElementById(
+            lastAgentOnline =
+                true;
+
+            agentStatusFailures =
+                0;
+
+
+            const statusDot =
+                document.getElementById(
                     "statusDot"
-                )
-                .classList.add(
-                    "online"
                 );
 
 
-            document
-                .getElementById(
+            const agentStatus =
+                document.getElementById(
                     "agentStatus"
-                )
-                .textContent =
+                );
+
+
+            if (statusDot) {
+
+                statusDot.classList.add(
+                    "online"
+                );
+
+            }
+
+
+            if (agentStatus) {
+
+                agentStatus.textContent =
                     "Agent Online V" +
                     (
                         data.version ||
-                        "5.1"
+                        "5.2"
                     );
+
+            }
+
+
+            setRefreshStatus(
+                new Date()
+                    .toLocaleTimeString() +
+                " · Agent Online"
+            );
+
 
             return true;
 
         }
 
+
+        // ========================================================
+        // AGENT REPLIED BUT OFFLINE
+        // ========================================================
+
+        agentStatusFailures++;
+
+
+        if (
+            agentStatusFailures >= 2
+        ) {
+
+            lastAgentOnline =
+                false;
+
+
+            const statusDot =
+                document.getElementById(
+                    "statusDot"
+                );
+
+
+            const agentStatus =
+                document.getElementById(
+                    "agentStatus"
+                );
+
+
+            if (statusDot) {
+
+                statusDot.classList.remove(
+                    "online"
+                );
+
+            }
+
+
+            if (agentStatus) {
+
+                agentStatus.textContent =
+                    "Agent Offline";
+
+            }
+
+
+            setRefreshStatus(
+                new Date()
+                    .toLocaleTimeString() +
+                " · Agent Offline"
+            );
+
+        }
+        else {
+
+            setRefreshStatus(
+                new Date()
+                    .toLocaleTimeString() +
+                " · Checking Agent..."
+            );
+
+        }
+
+
+        /*
+         * IMPORTANT:
+         *
+         * Do NOT call clearDashboardData().
+         *
+         * Existing Dashboard data stays visible.
+         */
+
+        return lastAgentOnline;
+
     }
-    catch {
+    catch (error) {
+
+        // ========================================================
+        // STATUS REQUEST ERROR / TIMEOUT
+        // ========================================================
+
+        agentStatusFailures++;
+
+
+        if (
+            agentStatusFailures >= 2
+        ) {
+
+            lastAgentOnline =
+                false;
+
+
+            const statusDot =
+                document.getElementById(
+                    "statusDot"
+                );
+
+
+            const agentStatus =
+                document.getElementById(
+                    "agentStatus"
+                );
+
+
+            if (statusDot) {
+
+                statusDot.classList.remove(
+                    "online"
+                );
+
+            }
+
+
+            if (agentStatus) {
+
+                agentStatus.textContent =
+                    "Agent Offline";
+
+            }
+
+
+            setRefreshStatus(
+                new Date()
+                    .toLocaleTimeString() +
+                " · Agent Offline"
+            );
+
+        }
+        else {
+
+            setRefreshStatus(
+                new Date()
+                    .toLocaleTimeString() +
+                " · Checking Agent..."
+            );
+
+        }
+
+
+        /*
+         * IMPORTANT:
+         *
+         * Do NOT clear Dashboard data.
+         */
+
+        return lastAgentOnline;
+
+    }
+    finally {
+
+        statusCheckInProgress =
+            false;
+
     }
 
-
-    document
-        .getElementById(
-            "statusDot"
-        )
-        .classList.remove(
-            "online"
-        );
-
-
-    document
-        .getElementById(
-            "agentStatus"
-        )
-        .textContent =
-            "Agent Offline";
-
-
-    return false;
 }
 
+
+// ============================================================
+// WAIT FOR AGENT
+// ============================================================
 
 // ============================================================
 // WAIT FOR AGENT
@@ -1892,6 +2090,7 @@ async function waitForAgent(
         ) {
 
             return true;
+
         }
 
 
@@ -1927,7 +2126,8 @@ async function startNewJob() {
             "startButton"
         );
 
-    button.disabled = true;
+    button.disabled =
+        true;
 
 
     try {
@@ -1966,7 +2166,9 @@ async function startNewJob() {
                 throw new Error(
                     "Local agent did not start."
                 );
+
             }
+
         }
 
 
@@ -1987,18 +2189,21 @@ async function startNewJob() {
                 result.message ||
                 "Unable to start job."
             );
+
         }
 
 
         currentJob =
             result.job;
 
+        lastReport =
+            null;
 
-        lastReport = null;
+        actionLog =
+            [];
 
-        actionLog = [];
-
-        currentDiagnostics = null;
+        currentDiagnostics =
+            null;
 
 
         resetJobForm();
@@ -2017,14 +2222,16 @@ async function startNewJob() {
             .getElementById(
                 "endButton"
             )
-            .disabled = false;
+            .disabled =
+                false;
 
 
         document
             .getElementById(
                 "stopAgentButton"
             )
-            .disabled = true;
+            .disabled =
+                true;
 
 
         updateJobDisplay();
@@ -2044,8 +2251,8 @@ async function startNewJob() {
 
         await refreshAll();
 
-
         startAutoRefresh();
+
 
     }
     catch (error) {
@@ -2060,9 +2267,11 @@ async function startNewJob() {
     }
     finally {
 
-        button.disabled = false;
+        button.disabled =
+            false;
 
     }
+
 }
 
 
@@ -2076,37 +2285,43 @@ function resetJobForm() {
         .getElementById(
             "technicianInput"
         )
-        .value = "";
+        .value =
+            "";
 
     document
         .getElementById(
             "customerInput"
         )
-        .value = "";
+        .value =
+            "";
 
     document
         .getElementById(
             "siteInput"
         )
-        .value = "";
+        .value =
+            "";
 
     document
         .getElementById(
             "issueInput"
         )
-        .value = "";
+        .value =
+            "";
 
     document
         .getElementById(
             "jobNotesInput"
         )
-        .value = "";
+        .value =
+            "";
 
     document
         .getElementById(
             "jobStatusInput"
         )
-        .value = "ACTIVE";
+        .value =
+            "ACTIVE";
 
 }
 
@@ -2127,7 +2342,8 @@ function updateJobDisplay() {
             "jobId"
         )
         .textContent =
-            currentJob.id || "-";
+            currentJob.id ||
+            "-";
 
 
     document
@@ -2135,7 +2351,8 @@ function updateJobDisplay() {
             "jobComputer"
         )
         .textContent =
-            currentJob.computer || "-";
+            currentJob.computer ||
+            "-";
 
 
     document
@@ -2143,7 +2360,8 @@ function updateJobDisplay() {
             "jobUser"
         )
         .textContent =
-            currentJob.user || "-";
+            currentJob.user ||
+            "-";
 
 
     document
@@ -2151,7 +2369,8 @@ function updateJobDisplay() {
             "jobStarted"
         )
         .textContent =
-            currentJob.startedAt || "-";
+            currentJob.startedAt ||
+            "-";
 
 
     document
@@ -2159,7 +2378,8 @@ function updateJobDisplay() {
             "jobIdInput"
         )
         .value =
-            currentJob.id || "";
+            currentJob.id ||
+            "";
 
 
     document
@@ -2167,13 +2387,14 @@ function updateJobDisplay() {
             "jobComputerInput"
         )
         .value =
-            currentJob.computer || "";
+            currentJob.computer ||
+            "";
 
 }
 
 
 // ============================================================
-// SAVE JOB FORM LOCALLY
+// JOB FORM
 // ============================================================
 
 function getJobFormData() {
@@ -2185,40 +2406,35 @@ function getJobFormData() {
                 .getElementById(
                     "technicianInput"
                 )
-                .value
-                .trim(),
+                .value,
 
         customer:
             document
                 .getElementById(
                     "customerInput"
                 )
-                .value
-                .trim(),
+                .value,
 
         site:
             document
                 .getElementById(
                     "siteInput"
                 )
-                .value
-                .trim(),
+                .value,
 
         issue:
             document
                 .getElementById(
                     "issueInput"
                 )
-                .value
-                .trim(),
+                .value,
 
         notes:
             document
                 .getElementById(
                     "jobNotesInput"
                 )
-                .value
-                .trim(),
+                .value,
 
         status:
             document
@@ -2228,6 +2444,7 @@ function getJobFormData() {
                 .value
 
     };
+
 }
 
 
@@ -2239,7 +2456,7 @@ function saveJobForm() {
 
 
     localStorage.setItem(
-        "ITDiagV5_Job_" +
+        "ITDiagV5_Form_" +
         currentJob.id,
         JSON.stringify(
             getJobFormData()
@@ -2258,7 +2475,7 @@ function loadJobForm() {
 
     const raw =
         localStorage.getItem(
-            "ITDiagV5_Job_" +
+            "ITDiagV5_Form_" +
             currentJob.id
         );
 
@@ -2279,47 +2496,48 @@ function loadJobForm() {
                 "technicianInput"
             )
             .value =
-                data.technician || "";
-
+                data.technician ||
+                "";
 
         document
             .getElementById(
                 "customerInput"
             )
             .value =
-                data.customer || "";
-
+                data.customer ||
+                "";
 
         document
             .getElementById(
                 "siteInput"
             )
             .value =
-                data.site || "";
-
+                data.site ||
+                "";
 
         document
             .getElementById(
                 "issueInput"
             )
             .value =
-                data.issue || "";
-
+                data.issue ||
+                "";
 
         document
             .getElementById(
                 "jobNotesInput"
             )
             .value =
-                data.notes || "";
-
+                data.notes ||
+                "";
 
         document
             .getElementById(
                 "jobStatusInput"
             )
             .value =
-                data.status || "ACTIVE";
+                data.status ||
+                "ACTIVE";
 
     }
     catch {
@@ -2329,902 +2547,10 @@ function loadJobForm() {
 
 
 // ============================================================
-// END JOB
-// ============================================================
-
-async function endJob() {
-
-    if (!currentJob) {
-
-        showNotice(
-            "There is no active job.",
-            5000,
-            "error"
-        );
-
-        return;
-    }
-
-
-    saveJobForm();
-
-
-    const jobInfo =
-        getJobFormData();
-
-
-    const confirmed =
-        confirm(
-            "End this diagnostic job and generate the report?\n\n" +
-            "Job: " +
-            currentJob.id +
-            "\n\n" +
-            "Actions recorded: " +
-            actionLog.length
-        );
-
-
-    if (!confirmed) {
-        return;
-    }
-
-
-    const endButton =
-        document.getElementById(
-            "endButton"
-        );
-
-    endButton.disabled = true;
-
-
-    try {
-
-        showNotice(
-            "Ending job and generating report...",
-            15000,
-            "info"
-        );
-
-
-        /*
-         * Agent V5.1 generates its report
-         * from its own job data.
-         *
-         * The frontend job fields and
-         * action log are kept locally.
-         */
-
-        const result =
-            await api(
-                "/job/end",
-                {
-                    method: "POST"
-                }
-            );
-
-
-        if (
-            !result.success
-        ) {
-
-            throw new Error(
-                result.message ||
-                "Unable to end job."
-            );
-        }
-
-
-        const finishedJob =
-            result.job;
-
-
-        lastReport =
-            result.report;
-
-
-        stopAutoRefresh();
-
-
-        currentJob = null;
-
-
-        document
-            .getElementById(
-                "dashboard"
-            )
-            .classList.add(
-                "section-hidden"
-            );
-
-
-        document
-            .getElementById(
-                "reportPath"
-            )
-            .textContent =
-                result.report ||
-                "Report created.";
-
-
-        document
-            .getElementById(
-                "reportBox"
-            )
-            .classList.add(
-                "show"
-            );
-
-
-        showNotice(
-            "Job " +
-            (
-                finishedJob?.id ||
-                ""
-            ) +
-            " ended successfully. Report created.",
-            8000,
-            "success"
-        );
-
-
-        await refreshHistory();
-
-
-        /*
-         * Save a frontend copy of
-         * job information for portal history.
-         */
-
-        if (finishedJob) {
-
-            localStorage.setItem(
-                "ITDiagV5_Completed_" +
-                finishedJob.id,
-                JSON.stringify({
-                    job:
-                        finishedJob,
-
-                    form:
-                        jobInfo,
-
-                    actions:
-                        actionLog
-                })
-            );
-
-        }
-
-
-        setTimeout(
-            async () => {
-
-                try {
-
-                    await api(
-                        "/agent/stop",
-                        {
-                            method: "POST"
-                        }
-                    );
-
-                }
-                catch {
-                    /*
-                     * Agent may close before
-                     * response is returned.
-                     */
-                }
-
-
-                document
-                    .getElementById(
-                        "endButton"
-                    )
-                    .disabled = true;
-
-
-                document
-                    .getElementById(
-                        "stopAgentButton"
-                    )
-                    .disabled = false;
-
-
-                await sleep(1200);
-
-
-                await checkAgent();
-
-            },
-            500
-        );
-
-    }
-    catch (error) {
-
-        endButton.disabled = false;
-
-
-        showNotice(
-            "Unable to end job: " +
-            error.message,
-            8000,
-            "error"
-        );
-
-    }
-}
-
-
-// ============================================================
-// OPEN REPORT
-// ============================================================
-
-async function openReport() {
-
-    if (!lastReport) {
-
-        showNotice(
-            "No report path available.",
-            5000,
-            "error"
-        );
-
-        return;
-    }
-
-
-    /*
-     * Prefer Agent endpoint because
-     * Windows knows the exact report path.
-     */
-
-    if (currentJob === null) {
-
-        try {
-
-            const jobId =
-                extractJobIdFromReport(
-                    lastReport
-                );
-
-
-            if (jobId) {
-
-                const result =
-                    await api(
-                        "/report/open?jobId=" +
-                        encodeURIComponent(
-                            jobId
-                        )
-                    );
-
-
-                if (
-                    result.success
-                ) {
-
-                    return;
-                }
-
-            }
-
-        }
-        catch {
-        }
-
-    }
-
-
-    const fileUrl =
-        "file:///" +
-        String(lastReport)
-            .replaceAll(
-                "\\",
-                "/"
-            );
-
-
-    window.open(
-        fileUrl,
-        "_blank"
-    );
-}
-
-
-function extractJobIdFromReport(
-    path
-) {
-
-    const name =
-        String(path)
-            .split("\\")
-            .pop()
-            .split("/")
-            .pop();
-
-
-    return name
-        .replace(
-            /\.html$/i,
-            ""
-        );
-
-}
-
-
-// ============================================================
-// STOP AGENT
-// ============================================================
-
-async function stopAgentManually() {
-
-    const confirmed =
-        confirm(
-            "Stop the local IT Diagnostic Agent?"
-        );
-
-
-    if (!confirmed) {
-        return;
-    }
-
-
-    try {
-
-        await api(
-            "/agent/stop",
-            {
-                method: "POST"
-            }
-        );
-
-        showNotice(
-            "Agent stop requested.",
-            5000,
-            "info"
-        );
-
-
-        await sleep(1200);
-
-        await checkAgent();
-
-    }
-    catch (error) {
-
-        showNotice(
-            "Agent stop request completed or connection closed: " +
-            error.message,
-            6000,
-            "info"
-        );
-
-    }
-}
-
-
-// ============================================================
-// SYSTEM
-// ============================================================
-
-async function refreshSystem() {
-
-    try {
-
-        const result =
-            await api(
-                "/system"
-            );
-
-
-        const data =
-            result.data || {};
-
-
-        /*
-         * Agent V5.1 returns:
-         * computer
-         * user
-         * manufacturer
-         * model
-         * windows
-         * build
-         * architecture
-         * memoryGB
-         * serial
-         */
-
-
-        setText(
-            "systemComputer",
-            data.computer
-        );
-
-
-        setText(
-            "systemUser",
-            data.user
-        );
-
-
-        setText(
-            "systemManufacturer",
-            data.manufacturer
-        );
-
-
-        setText(
-            "systemModel",
-            data.model
-        );
-
-
-        setText(
-            "systemWindows",
-            data.windows
-        );
-
-
-        setText(
-            "systemBuild",
-            data.build
-        );
-
-
-        setText(
-            "systemArchitecture",
-            data.architecture
-        );
-
-
-        setText(
-            "systemMemory",
-            data.memoryGB !== undefined
-                ? data.memoryGB + " GB"
-                : "-"
-        );
-
-
-        setText(
-            "systemSerial",
-            data.serial
-        );
-
-
-        if (currentJob) {
-
-            setText(
-                "jobComputer",
-                data.computer ||
-                currentJob.computer
-            );
-
-        }
-
-    }
-    catch {
-    }
-}
-
-
-// ============================================================
-// METRICS
-// ============================================================
-
-async function refreshMetrics() {
-
-    try {
-
-        const result =
-            await api(
-                "/metrics"
-            );
-
-
-        const data =
-            result.data || {};
-
-
-        setText(
-            "cpu",
-            data.cpu !== undefined
-                ? data.cpu + "%"
-                : "-"
-        );
-
-
-        setText(
-            "ram",
-            data.ram !== undefined
-                ? data.ram + "%"
-                : "-"
-        );
-
-
-        setText(
-            "disk",
-            data.disk !== undefined
-                ? data.disk + "%"
-                : "-"
-        );
-
-
-        setText(
-            "ramFree",
-            data.ramFreeGB !== undefined
-                ? data.ramFreeGB + " GB"
-                : "-"
-        );
-
-
-        setText(
-            "diskFree",
-            data.diskFreeGB !== undefined
-                ? data.diskFreeGB + " GB"
-                : "-"
-        );
-
-    }
-    catch {
-    }
-}
-
-
-// ============================================================
-// DIAGNOSTICS
-// ============================================================
-
-async function refreshDiagnostics() {
-
-    try {
-
-        const result =
-            await api(
-                "/diagnose"
-            );
-
-
-        const data =
-            result.data || {};
-
-
-        currentDiagnostics =
-            data;
-
-
-        const health =
-            Number(
-                data.health
-            );
-
-
-        setText(
-            "health",
-            !isNaN(health)
-                ? health + " / 100"
-                : "-"
-        );
-
-
-        const healthBar =
-            document.getElementById(
-                "healthBar"
-            );
-
-
-        healthBar.style.width =
-            Math.max(
-                0,
-                Math.min(
-                    100,
-                    isNaN(health)
-                        ? 0
-                        : health
-                )
-            ) + "%";
-
-
-        const healthElement =
-            document.getElementById(
-                "health"
-            );
-
-
-        healthElement.classList.remove(
-            "health-good",
-            "health-warning",
-            "health-bad"
-        );
-
-
-        if (health >= 80) {
-
-            healthElement.classList.add(
-                "health-good"
-            );
-
-        }
-        else if (health >= 60) {
-
-            healthElement.classList.add(
-                "health-warning"
-            );
-
-        }
-        else {
-
-            healthElement.classList.add(
-                "health-bad"
-            );
-
-        }
-
-
-        const problems =
-            Array.isArray(
-                data.problems
-            )
-                ? data.problems
-                : [];
-
-
-        setText(
-            "summaryProblems",
-            problems.length
-        );
-
-
-        setText(
-            "summaryHealth",
-            !isNaN(health)
-                ? health + " / 100"
-                : "-"
-        );
-
-
-        const box =
-            document.getElementById(
-                "diagnostics"
-            );
-
-
-        if (
-            problems.length === 0
-        ) {
-
-            box.innerHTML =
-                `
-                <div class="badge badge-green">
-                    NO DETECTED PROBLEMS
-                </div>
-                `;
-
-            return;
-        }
-
-
-        box.innerHTML =
-            problems
-                .map(
-                    (problem, index) => {
-
-                        const severity =
-                            String(
-                                problem.severity ||
-                                ""
-                            ).toUpperCase();
-
-
-                        let badgeClass =
-                            "badge-blue";
-
-
-                        if (
-                            severity.includes(
-                                "CRITICAL"
-                            ) ||
-                            severity.includes(
-                                "HIGH"
-                            )
-                        ) {
-
-                            badgeClass =
-                                "badge-red";
-
-                        }
-                        else if (
-                            severity.includes(
-                                "MEDIUM"
-                            ) ||
-                            severity.includes(
-                                "WARNING"
-                            )
-                        ) {
-
-                            badgeClass =
-                                "badge-yellow";
-
-                        }
-
-
-                        return `
-
-<div
-    style="
-        padding:14px;
-        border-bottom:1px solid #334155;
-    ">
-
-<div
-    style="
-        display:flex;
-        justify-content:space-between;
-        gap:10px;
-        flex-wrap:wrap;
-    ">
-
-<strong>
-${escapeHtml(problem.title)}
-</strong>
-
-<span class="badge ${badgeClass}">
-${escapeHtml(problem.severity)}
-</span>
-
-</div>
-
-
-<div
-    class="muted"
-    style="margin-top:8px;">
-
-${escapeHtml(problem.description)}
-
-</div>
-
-
-<div
-    style="margin-top:10px;">
-
-<strong>
-Recommended Fix
-</strong>
-
-<div
-    class="muted"
-    style="margin-top:4px;">
-
-${escapeHtml(problem.recommendedFix)}
-
-</div>
-
-</div>
-
-
-<div style="margin-top:10px;">
-
-<button
-    class="small-button blue"
-    onclick="useDiagnosticAsAction(${index})">
-
-➕ ADD TO ACTION LOG
-
-</button>
-
-</div>
-
-</div>
-
-`;
-
-                    }
-                )
-                .join("");
-
-    }
-    catch {
-    }
-}
-
-
-// ============================================================
-// USE DIAGNOSTIC AS ACTION
-// ============================================================
-
-function useDiagnosticAsAction(
-    index
-) {
-
-    if (
-        !currentDiagnostics ||
-        !Array.isArray(
-            currentDiagnostics.problems
-        )
-    ) {
-
-        return;
-    }
-
-
-    const problem =
-        currentDiagnostics
-            .problems[index];
-
-
-    if (!problem) {
-        return;
-    }
-
-
-    const text =
-        "Problem: " +
-        (
-            problem.title ||
-            ""
-        ) +
-        "\n\nDescription: " +
-        (
-            problem.description ||
-            ""
-        ) +
-        "\n\nRecommended Fix: " +
-        (
-            problem.recommendedFix ||
-            ""
-        );
-
-
-    document
-        .getElementById(
-            "actionInput"
-        )
-        .value =
-            text;
-
-
-    document
-        .getElementById(
-            "actionCategoryInput"
-        )
-        .value =
-            "DIAGNOSTIC";
-
-
-    window.scrollTo({
-        top:
-            document
-                .getElementById(
-                    "actionInput"
-                )
-                .getBoundingClientRect()
-                .top +
-                window.scrollY -
-                100,
-
-        behavior: "smooth"
-    });
-
-}
-
-
-// ============================================================
-// ADD ACTION
+// ACTIONS
 // ============================================================
 
 function addAction() {
-
-    if (!currentJob) {
-
-        showNotice(
-            "Start a job first.",
-            5000,
-            "error"
-        );
-
-        return;
-    }
-
 
     const text =
         document
@@ -3238,8 +2564,8 @@ function addAction() {
     if (!text) {
 
         showNotice(
-            "Enter the action taken first.",
-            5000,
+            "Please enter the action taken.",
+            4000,
             "error"
         );
 
@@ -3271,148 +2597,56 @@ function addAction() {
             .value;
 
 
-    const action = {
-
-        id:
-            Date.now(),
+    actionLog.push({
 
         time:
             new Date()
                 .toLocaleString(),
 
-        category:
-            category,
-
-        text:
+        action:
             text,
 
         result:
             result,
 
         resolution:
-            resolution
+            resolution,
 
-    };
+        category:
+            category
 
-
-    actionLog.push(
-        action
-    );
-
-
-    saveActionLog();
-
-    renderActions();
-
-    updateSummary();
+    });
 
 
     document
         .getElementById(
             "actionInput"
         )
-        .value = "";
+        .value =
+            "";
 
 
-    showNotice(
-        "Action added to job log.",
-        4000,
-        "success"
-    );
+    renderActions();
 
-}
-
-
-// ============================================================
-// ACTION STORAGE
-// ============================================================
-
-function saveActionLog() {
-
-    if (!currentJob) {
-        return;
-    }
-
-
-    localStorage.setItem(
-        "ITDiagV5_Actions_" +
-        currentJob.id,
-        JSON.stringify(
-            actionLog
-        )
-    );
+    updateSummary();
 
 }
 
-
-function loadActionLog() {
-
-    if (!currentJob) {
-        return;
-    }
-
-
-    const raw =
-        localStorage.getItem(
-            "ITDiagV5_Actions_" +
-            currentJob.id
-        );
-
-
-    if (!raw) {
-
-        actionLog = [];
-
-        return;
-    }
-
-
-    try {
-
-        actionLog =
-            JSON.parse(raw);
-
-
-        if (
-            !Array.isArray(
-                actionLog
-            )
-        ) {
-
-            actionLog = [];
-
-        }
-
-    }
-    catch {
-
-        actionLog = [];
-
-    }
-
-}
-
-
-// ============================================================
-// RENDER ACTIONS
-// ============================================================
 
 function renderActions() {
 
-    const box =
+    const container =
         document.getElementById(
             "actionList"
         );
 
 
-    if (
-        !actionLog.length
-    ) {
+    if (!actionLog.length) {
 
-        box.innerHTML =
+        container.innerHTML =
             `
             <div class="empty">
-                No actions recorded yet.
+            No actions recorded yet.
             </div>
             `;
 
@@ -3420,168 +2654,94 @@ function renderActions() {
     }
 
 
-    box.innerHTML =
-        actionLog
-            .map(
-                (action, index) => {
-
-                    let resultClass =
-                        "badge-blue";
+    container.innerHTML =
+        "";
 
 
-                    if (
-                        action.result ===
-                        "SUCCESS"
-                    ) {
+    actionLog.forEach(
+        (item, index) => {
 
-                        resultClass =
-                            "badge-green";
-
-                    }
-                    else if (
-                        action.result ===
-                        "FAILED"
-                    ) {
-
-                        resultClass =
-                            "badge-red";
-
-                    }
-                    else if (
-                        action.result ===
-                        "PARTIAL"
-                    ) {
-
-                        resultClass =
-                            "badge-yellow";
-
-                    }
+            const div =
+                document.createElement(
+                    "div"
+                );
 
 
-                    return `
-
-<div class="action-item">
-
-<div class="action-header">
-
-<div>
-
-<strong>
-#${index + 1}
-</strong>
-
-<span
-    class="badge badge-blue"
-    style="margin-left:6px;">
-
-${escapeHtml(
-    action.category
-)}
-
-</span>
-
-<span
-    class="badge ${resultClass}"
-    style="margin-left:5px;">
-
-${escapeHtml(
-    action.result
-)}
-
-</span>
-
-</div>
+            div.className =
+                "action-item";
 
 
-<div class="muted">
+            div.innerHTML =
+                `
+                <div class="action-header">
 
-${escapeHtml(
-    action.time
-)}
+                    <strong>
+                    ${escapeHtml(
+                        item.category ||
+                        "OTHER"
+                    )}
+                    </strong>
 
-</div>
+                    <span class="badge badge-blue">
+                    ${escapeHtml(
+                        item.result ||
+                        ""
+                    )}
+                    </span>
 
-</div>
+                </div>
+
+                <div class="action-text">
+                ${escapeHtml(
+                    item.action ||
+                    ""
+                )}
+                </div>
+
+                <div
+                    class="muted"
+                    style="margin-top:7px;">
+
+                    ${escapeHtml(
+                        item.time ||
+                        ""
+                    )}
+
+                    · Resolution:
+                    ${escapeHtml(
+                        item.resolution ||
+                        ""
+                    )}
+
+                    <button
+                        class="danger small-button"
+                        style="float:right;"
+                        onclick="removeAction(${index})">
+
+                        Remove
+
+                    </button>
+
+                </div>
+                `;
 
 
-<div class="action-text">
+            container.appendChild(
+                div
+            );
 
-${escapeHtml(
-    action.text
-)}
-
-</div>
-
-
-<div
-    style="
-        margin-top:9px;
-        display:flex;
-        justify-content:space-between;
-        gap:10px;
-        align-items:center;
-    ">
-
-<span class="muted">
-
-Resolution:
-<strong>
-${escapeHtml(
-    action.resolution
-)}
-</strong>
-
-</span>
-
-
-<button
-    class="small-button danger"
-    onclick="removeAction(${action.id})">
-
-Remove
-
-</button>
-
-</div>
-
-</div>
-
-`;
-
-                }
-            )
-            .join("");
+        }
+    );
 
 }
 
 
-// ============================================================
-// REMOVE ACTION
-// ============================================================
+function removeAction(index) {
 
-function removeAction(
-    id
-) {
-
-    const confirmed =
-        confirm(
-            "Remove this action from the job log?"
-        );
-
-
-    if (!confirmed) {
-        return;
-    }
-
-
-    actionLog =
-        actionLog.filter(
-            action =>
-                action.id !== id
-        );
-
-
-    saveActionLog();
+    actionLog.splice(
+        index,
+        1
+    );
 
     renderActions();
 
@@ -3589,10 +2749,6 @@ function removeAction(
 
 }
 
-
-// ============================================================
-// SUMMARY
-// ============================================================
 
 function updateSummary() {
 
@@ -3604,8 +2760,8 @@ function updateSummary() {
 
     const resolved =
         actionLog.filter(
-            action =>
-                action.resolution ===
+            item =>
+                item.resolution ===
                 "RESOLVED"
         ).length;
 
@@ -3614,6 +2770,188 @@ function updateSummary() {
         "summaryResolved",
         resolved
     );
+
+
+    const problems =
+        currentDiagnostics &&
+        Array.isArray(
+            currentDiagnostics.problems
+        )
+            ? currentDiagnostics.problems.length
+            : 0;
+
+
+    setText(
+        "summaryProblems",
+        problems
+    );
+
+
+    if (
+        currentDiagnostics
+    ) {
+
+        setText(
+            "summaryHealth",
+            currentDiagnostics.health ||
+            "-"
+        );
+
+    }
+
+}
+
+
+// ============================================================
+// SYSTEM
+// ============================================================
+
+async function refreshSystem() {
+
+    try {
+
+        const result =
+            await api(
+                "/system"
+            );
+
+
+        const data =
+            result.data ||
+            result;
+
+
+        setText(
+            "systemComputer",
+            data.computer
+        );
+
+        setText(
+            "systemUser",
+            data.user
+        );
+
+        setText(
+            "systemManufacturer",
+            data.manufacturer
+        );
+
+        setText(
+            "systemModel",
+            data.model
+        );
+
+        setText(
+            "systemWindows",
+            data.windows
+        );
+
+        setText(
+            "systemBuild",
+            data.build
+        );
+
+        setText(
+            "systemArchitecture",
+            data.architecture
+        );
+
+        setText(
+            "systemMemory",
+            data.memoryGB ?
+                data.memoryGB + " GB" :
+                "-"
+        );
+
+        setText(
+            "systemSerial",
+            data.serial
+        );
+
+
+        if (
+            currentJob
+        ) {
+
+            document
+                .getElementById(
+                    "jobComputerInput"
+                )
+                .value =
+                    data.computer ||
+                    currentJob.computer ||
+                    "";
+
+        }
+
+    }
+    catch {
+    }
+
+}
+
+
+// ============================================================
+// METRICS
+// ============================================================
+
+async function refreshMetrics() {
+
+    try {
+
+        const result =
+            await api(
+                "/metrics"
+            );
+
+
+        const data =
+            result.data ||
+            result;
+
+
+        setText(
+            "cpu",
+            data.cpu !== undefined
+                ? data.cpu + "%"
+                : "-"
+        );
+
+
+        setText(
+            "ram",
+            data.ram !== undefined
+                ? data.ram + "%"
+                : "-"
+        );
+
+
+        setText(
+            "ramFree",
+            data.ramFreeGB !== undefined
+                ? data.ramFreeGB + " GB"
+                : "-"
+        );
+
+
+        setText(
+            "disk",
+            data.disk !== undefined
+                ? data.disk + "%"
+                : "-"
+        );
+
+
+        setText(
+            "diskFree",
+            data.diskFreeGB !== undefined
+                ? data.diskFreeGB + " GB"
+                : "-"
+        );
+
+    }
+    catch {
+    }
 
 }
 
@@ -3633,14 +2971,17 @@ async function refreshNetwork() {
 
 
         const data =
-            result.data || {};
+            result.data ||
+            result;
 
 
         setText(
             "networkStatus",
-            data.internet
-                ? "🌐 Internet: ONLINE"
-                : "⚠️ Internet: OFFLINE"
+            data.internet === true
+                ? "Internet: ONLINE"
+                : data.internet === false
+                    ? "Internet: OFFLINE"
+                    : "-"
         );
 
 
@@ -3650,7 +2991,8 @@ async function refreshNetwork() {
             );
 
 
-        table.innerHTML = "";
+        table.innerHTML =
+            "";
 
 
         const adapters =
@@ -3674,32 +3016,34 @@ async function refreshNetwork() {
 
             row.innerHTML =
                 `
+                <td>
+                ${escapeHtml(
+                    item.interface ||
+                    ""
+                )}
+                </td>
 
-<td>
-${escapeHtml(
-    item.interface || ""
-)}
-</td>
+                <td>
+                ${escapeHtml(
+                    item.ipv4 ||
+                    ""
+                )}
+                </td>
 
-<td>
-${escapeHtml(
-    item.ipv4 || ""
-)}
-</td>
+                <td>
+                ${escapeHtml(
+                    item.gateway ||
+                    ""
+                )}
+                </td>
 
-<td>
-${escapeHtml(
-    item.gateway || ""
-)}
-</td>
-
-<td>
-${escapeHtml(
-    item.dns || ""
-)}
-</td>
-
-`;
+                <td>
+                ${escapeHtml(
+                    item.dns ||
+                    ""
+                )}
+                </td>
+                `;
 
 
             table.appendChild(
@@ -3716,9 +3060,12 @@ ${escapeHtml(
             table.innerHTML =
                 `
                 <tr>
-                    <td colspan="4"
+                    <td
+                        colspan="4"
                         class="empty">
-                        No adapter data.
+
+                        No network adapter data.
+
                     </td>
                 </tr>
                 `;
@@ -3728,6 +3075,7 @@ ${escapeHtml(
     }
     catch {
     }
+
 }
 
 
@@ -3745,21 +3093,22 @@ async function refreshServices() {
             );
 
 
-        const table =
-            document.getElementById(
-                "servicesTable"
-            );
-
-
-        table.innerHTML = "";
-
-
         const items =
             Array.isArray(
                 result.data
             )
                 ? result.data
                 : [];
+
+
+        const table =
+            document.getElementById(
+                "servicesTable"
+            );
+
+
+        table.innerHTML =
+            "";
 
 
         for (
@@ -3775,36 +3124,34 @@ async function refreshServices() {
 
             row.innerHTML =
                 `
+                <td>
+                ${escapeHtml(
+                    item.name ||
+                    ""
+                )}
+                </td>
 
-<td>
-${escapeHtml(
-    item.name || ""
-)}
-</td>
+                <td>
+                ${escapeHtml(
+                    item.displayName ||
+                    ""
+                )}
+                </td>
 
-<td>
-${escapeHtml(
-    item.displayName || ""
-)}
-</td>
+                <td>
+                ${escapeHtml(
+                    item.status ||
+                    ""
+                )}
+                </td>
 
-<td>
-<span class="badge">
-
-${escapeHtml(
-    item.status || ""
-)}
-
-</span>
-</td>
-
-<td>
-${escapeHtml(
-    item.startType || ""
-)}
-</td>
-
-`;
+                <td>
+                ${escapeHtml(
+                    item.startType ||
+                    ""
+                )}
+                </td>
+                `;
 
 
             table.appendChild(
@@ -3813,9 +3160,30 @@ ${escapeHtml(
 
         }
 
+
+        if (
+            !items.length
+        ) {
+
+            table.innerHTML =
+                `
+                <tr>
+                    <td
+                        colspan="4"
+                        class="empty">
+
+                        No service data.
+
+                    </td>
+                </tr>
+                `;
+
+        }
+
     }
     catch {
     }
+
 }
 
 
@@ -3833,21 +3201,22 @@ async function refreshProcesses() {
             );
 
 
-        const table =
-            document.getElementById(
-                "processesTable"
-            );
-
-
-        table.innerHTML = "";
-
-
         const items =
             Array.isArray(
                 result.data
             )
                 ? result.data
                 : [];
+
+
+        const table =
+            document.getElementById(
+                "processesTable"
+            );
+
+
+        table.innerHTML =
+            "";
 
 
         for (
@@ -3863,38 +3232,25 @@ async function refreshProcesses() {
 
             row.innerHTML =
                 `
+                <td>
+                ${item.id ?? ""}
+                </td>
 
-<td>
-${item.id ?? ""}
-</td>
+                <td>
+                ${escapeHtml(
+                    item.name ||
+                    ""
+                )}
+                </td>
 
-<td>
-${escapeHtml(
-    item.name || ""
-)}
-</td>
+                <td>
+                ${item.cpu ?? ""}
+                </td>
 
-<td>
-${item.cpu ?? 0}
-</td>
-
-<td>
-${item.memoryMB ?? 0} MB
-</td>
-
-<td>
-
-<button
-    class="small-button danger"
-    onclick="killProcess(${item.id})">
-
-Kill
-
-</button>
-
-</td>
-
-`;
+                <td>
+                ${item.memoryMB ?? ""}
+                </td>
+                `;
 
 
             table.appendChild(
@@ -3903,70 +3259,226 @@ Kill
 
         }
 
+
+        if (
+            !items.length
+        ) {
+
+            table.innerHTML =
+                `
+                <tr>
+                    <td
+                        colspan="4"
+                        class="empty">
+
+                        No process data.
+
+                    </td>
+                </tr>
+                `;
+
+        }
+
     }
     catch {
     }
+
 }
 
 
 // ============================================================
-// KILL PROCESS
+// DIAGNOSTICS
 // ============================================================
 
-async function killProcess(
-    pid
-) {
-
-    const confirmed =
-        confirm(
-            "Terminate process PID " +
-            pid +
-            "?"
-        );
-
-
-    if (!confirmed) {
-        return;
-    }
-
+async function refreshDiagnostics() {
 
     try {
 
         const result =
             await api(
-                "/kill",
-                {
-                    method: "POST",
-
-                    body:
-                        JSON.stringify({
-                            pid: pid
-                        })
-                }
+                "/diagnose"
             );
 
 
-        showNotice(
-            result.message ||
-            "Process action completed.",
-            5000,
-            "info"
-        );
+        const data =
+            result.data ||
+            result;
 
 
-        await refreshProcesses();
+        currentDiagnostics =
+            data;
+
+
+        updateSummary();
+
+
+        const container =
+            document.getElementById(
+                "diagnostics"
+            );
+
+
+        const problems =
+            Array.isArray(
+                data.problems
+            )
+                ? data.problems
+                : [];
+
+
+        let healthClass =
+            "health-good";
+
+
+        if (
+            String(
+                data.health ||
+                ""
+            )
+            .toLowerCase()
+            .includes(
+                "warning"
+            )
+        ) {
+
+            healthClass =
+                "health-warning";
+
+        }
+
+
+        if (
+            String(
+                data.health ||
+                ""
+            )
+            .toLowerCase()
+            .includes(
+                "bad"
+            ) ||
+            String(
+                data.health ||
+                ""
+            )
+            .toLowerCase()
+            .includes(
+                "critical"
+            )
+        ) {
+
+            healthClass =
+                "health-bad";
+
+        }
+
+
+        container.innerHTML =
+            `
+            <div class="summary-box">
+
+                <div class="summary-label">
+                Health
+                </div>
+
+                <div
+                    class="summary-value ${healthClass}">
+
+                    ${escapeHtml(
+                        data.health ||
+                        "-"
+                    )}
+
+                </div>
+
+            </div>
+            `;
+
+
+        if (
+            problems.length
+        ) {
+
+            problems.forEach(
+                problem => {
+
+                    const div =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    div.className =
+                        "action-item";
+
+
+                    div.innerHTML =
+                        `
+                        <div class="action-header">
+
+                            <strong>
+                            ${escapeHtml(
+                                problem.title ||
+                                "Problem"
+                            )}
+                            </strong>
+
+                            <span class="badge badge-red">
+
+                            ${escapeHtml(
+                                problem.severity ||
+                                ""
+                            )}
+
+                            </span>
+
+                        </div>
+
+                        <div class="action-text">
+
+                        ${escapeHtml(
+                            problem.description ||
+                            ""
+                        )}
+
+                        </div>
+
+                        <div
+                            class="muted"
+                            style="margin-top:8px;">
+
+                            Recommended Fix:
+                            ${escapeHtml(
+                                problem.recommendedFix ||
+                                ""
+                            )}
+
+                        </div>
+                        `;
+
+
+                    container.appendChild(
+                        div
+                    );
+
+                }
+            );
+
+        }
+        else {
+
+            container.innerHTML +=
+                `
+                <div class="empty">
+                No diagnostic problems detected.
+                </div>
+                `;
+
+        }
 
     }
-    catch (error) {
-
-        showNotice(
-            "Process action failed: " +
-            error.message,
-            7000,
-            "error"
-        );
-
+    catch {
     }
+
 }
 
 
@@ -3990,7 +3502,8 @@ async function refreshEvents() {
             );
 
 
-        table.innerHTML = "";
+        table.innerHTML =
+            "";
 
 
         const items =
@@ -4014,140 +3527,38 @@ async function refreshEvents() {
 
             row.innerHTML =
                 `
+                <td>
+                ${escapeHtml(
+                    item.time ||
+                    ""
+                )}
+                </td>
 
-<td>
-${escapeHtml(
-    item.time || ""
-)}
-</td>
+                <td>
+                ${item.id ?? ""}
+                </td>
 
-<td>
-${item.id ?? ""}
-</td>
+                <td>
+                ${escapeHtml(
+                    item.provider ||
+                    ""
+                )}
+                </td>
 
-<td>
-${escapeHtml(
-    item.provider || ""
-)}
-</td>
+                <td>
+                ${escapeHtml(
+                    item.level ||
+                    ""
+                )}
+                </td>
 
-<td>
-${escapeHtml(
-    item.level || ""
-)}
-</td>
-
-<td>
-${escapeHtml(
-    item.message || ""
-)}
-</td>
-
-`;
-
-
-            table.appendChild(
-                row
-            );
-
-        }
-
-    }
-    catch {
-    }
-}
-
-
-// ============================================================
-// HISTORY
-// ============================================================
-
-async function refreshHistory() {
-
-    try {
-
-        const result =
-            await api(
-                "/history"
-            );
-
-
-        const table =
-            document.getElementById(
-                "historyTable"
-            );
-
-
-        table.innerHTML = "";
-
-
-        const history =
-            Array.isArray(
-                result.data
-            )
-                ? result.data
-                : [];
-
-
-        for (
-            const item
-            of history
-                .slice()
-                .reverse()
-        ) {
-
-            const row =
-                document.createElement(
-                    "tr"
-                );
-
-
-            row.innerHTML =
-                `
-
-<td>
-${escapeHtml(
-    item.id || ""
-)}
-</td>
-
-<td>
-${escapeHtml(
-    item.computer || ""
-)}
-</td>
-
-<td>
-${escapeHtml(
-    item.user || ""
-)}
-</td>
-
-<td>
-${escapeHtml(
-    item.startedAt || ""
-)}
-</td>
-
-<td>
-${escapeHtml(
-    item.endedAt || ""
-)}
-</td>
-
-<td>
-
-<span class="badge badge-green">
-
-${escapeHtml(
-    item.status || "COMPLETED"
-)}
-
-</span>
-
-</td>
-
-`;
+                <td>
+                ${escapeHtml(
+                    item.message ||
+                    ""
+                )}
+                </td>
+                `;
 
 
             table.appendChild(
@@ -4158,15 +3569,18 @@ ${escapeHtml(
 
 
         if (
-            !history.length
+            !items.length
         ) {
 
             table.innerHTML =
                 `
                 <tr>
-                    <td colspan="6"
+                    <td
+                        colspan="5"
                         class="empty">
-                        No job history.
+
+                        No event data.
+
                     </td>
                 </tr>
                 `;
@@ -4176,6 +3590,7 @@ ${escapeHtml(
     }
     catch {
     }
+
 }
 
 
@@ -4185,19 +3600,129 @@ ${escapeHtml(
 
 async function refreshAll() {
 
-    const online =
-        await checkAgent();
+    if (
+        refreshInProgress
+    ) {
 
+        return false;
 
-    if (!online) {
-
-        return;
     }
 
 
+    refreshInProgress =
+        true;
+
+
+    try {
+
+        /*
+         * IMPORTANT:
+         * Every Auto Refresh cycle checks
+         * the real Agent status.
+         */
+
+        const online =
+            await checkAgent();
+
+
+        if (!online) {
+
+            setRefreshStatus(
+                new Date()
+                    .toLocaleTimeString() +
+                " · Agent Offline"
+            );
+
+            return false;
+
+        }
+
+
+        if (
+            currentJob
+        ) {
+
+            await Promise.all([
+
+                refreshSystem(),
+
+                refreshMetrics(),
+
+                refreshDiagnostics(),
+
+                refreshNetwork(),
+
+                refreshServices(),
+
+                refreshProcesses(),
+
+                refreshEvents()
+
+            ]);
+
+        }
+
+
+        await refreshHistory();
+
+
+        lastRefreshAt =
+            Date.now();
+
+
+        setRefreshStatus(
+            new Date(
+                lastRefreshAt
+            )
+            .toLocaleTimeString()
+        );
+
+
+        return true;
+
+    }
+    catch {
+
+        setRefreshStatus(
+            new Date()
+                .toLocaleTimeString() +
+            " · Refresh Error"
+        );
+
+        return false;
+
+    }
+    finally {
+
+        refreshInProgress =
+            false;
+
+    }
+
+}
+
+
+// ============================================================
+// AUTO REFRESH V5.2.3
+// ============================================================
+
+async function refreshJobDataOnly() {
+
     if (
-        currentJob
+        refreshInProgress ||
+        !currentJob ||
+        endJobRunning
     ) {
+
+        return false;
+
+    }
+
+
+    refreshInProgress = true;
+
+
+    try {
 
         await Promise.all([
 
@@ -4217,16 +3742,123 @@ async function refreshAll() {
 
         ]);
 
+
+        lastRefreshAt =
+            Date.now();
+
+
+        setRefreshStatus(
+            new Date(
+                lastRefreshAt
+            )
+            .toLocaleTimeString()
+        );
+
+
+        return true;
+
     }
+    catch {
+
+        setRefreshStatus(
+            new Date()
+                .toLocaleTimeString() +
+            " · Refresh Error"
+        );
 
 
-    await refreshHistory();
+        return false;
+
+    }
+    finally {
+
+        refreshInProgress =
+            false;
+
+    }
 
 }
 
 
 // ============================================================
-// AUTO REFRESH
+// AUTO REFRESH V5.2.3
+// ============================================================
+
+async function refreshJobDataOnly() {
+
+    if (
+        refreshInProgress ||
+        !currentJob ||
+        endJobRunning
+    ) {
+
+        return false;
+
+    }
+
+
+    refreshInProgress = true;
+
+
+    try {
+
+        await Promise.all([
+
+            refreshSystem(),
+
+            refreshMetrics(),
+
+            refreshDiagnostics(),
+
+            refreshNetwork(),
+
+            refreshServices(),
+
+            refreshProcesses(),
+
+            refreshEvents()
+
+        ]);
+
+
+        lastRefreshAt =
+            Date.now();
+
+
+        setRefreshStatus(
+            new Date(
+                lastRefreshAt
+            )
+            .toLocaleTimeString()
+        );
+
+
+        return true;
+
+    }
+    catch {
+
+        setRefreshStatus(
+            new Date()
+                .toLocaleTimeString() +
+            " · Refresh Error"
+        );
+
+        return false;
+
+    }
+    finally {
+
+        refreshInProgress =
+            false;
+
+    }
+
+}
+
+
+// ============================================================
+// START AUTO REFRESH
 // ============================================================
 
 function startAutoRefresh() {
@@ -4238,29 +3870,31 @@ function startAutoRefresh() {
         setInterval(
             async () => {
 
-                if (
-                    !currentJob
-                ) {
+                const online =
+                    await checkAgent();
+
+
+                if (!online) {
+
+                    setRefreshStatus(
+                        new Date()
+                            .toLocaleTimeString() +
+                        " · Agent Offline"
+                    );
 
                     return;
+
                 }
 
 
-                await Promise.all([
+                if (
+                    currentJob &&
+                    !endJobRunning
+                ) {
 
-                    refreshMetrics(),
+                    await refreshJobDataOnly();
 
-                    refreshDiagnostics(),
-
-                    refreshNetwork(),
-
-                    refreshServices(),
-
-                    refreshProcesses(),
-
-                    refreshEvents()
-
-                ]);
+                }
 
             },
             5000
@@ -4268,6 +3902,10 @@ function startAutoRefresh() {
 
 }
 
+
+// ============================================================
+// STOP AUTO REFRESH
+// ============================================================
 
 function stopAutoRefresh() {
 
@@ -4279,9 +3917,11 @@ function stopAutoRefresh() {
             refreshTimer
         );
 
-        refreshTimer = null;
+        refreshTimer =
+            null;
 
     }
+
 }
 
 
@@ -4352,6 +3992,656 @@ function showTab(
 
 
 // ============================================================
+// END JOB
+// ============================================================
+
+async function endJob() {
+
+    if (
+        endJobRunning
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        !currentJob
+    ) {
+
+        showNotice(
+            "There is no active job.",
+            5000,
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    endJobRunning =
+        true;
+
+
+    const endButton =
+        document.getElementById(
+            "endButton"
+        );
+
+
+    try {
+
+        while (
+            refreshInProgress
+        ) {
+
+            await sleep(100);
+
+        }
+
+
+        if (
+            !currentJob
+        ) {
+
+            showNotice(
+                "There is no active job.",
+                5000,
+                "error"
+            );
+
+            return;
+
+        }
+
+
+        saveJobForm();
+
+
+        const jobInfo =
+            getJobFormData();
+
+
+        const confirmed =
+            confirm(
+                "End this diagnostic job and generate the report?\n\n" +
+                "Job: " +
+                currentJob.id +
+                "\n\n" +
+                "Actions recorded: " +
+                actionLog.length
+            );
+
+
+        if (!confirmed) {
+
+            return;
+
+        }
+
+
+        if (endButton) {
+
+            endButton.disabled =
+                true;
+
+        }
+
+
+        showNotice(
+            "Ending job and generating report...",
+            15000,
+            "info"
+        );
+
+
+        const result =
+            await api(
+                "/job/end",
+                {
+                    method: "POST",
+                    timeoutMs: 120000
+                }
+            );
+
+
+        if (
+            !result.success
+        ) {
+
+            throw new Error(
+                result.message ||
+                "Unable to end job."
+            );
+
+        }
+
+
+        const finishedJob =
+            result.job;
+
+
+        lastReport =
+            result.report;
+
+
+        if (
+            finishedJob
+        ) {
+
+            localStorage.setItem(
+                "ITDiagV5_Completed_" +
+                finishedJob.id,
+
+                JSON.stringify({
+
+                    job:
+                        finishedJob,
+
+                    form:
+                        jobInfo,
+
+                    actions:
+                        actionLog
+
+                })
+            );
+
+        }
+
+
+        currentJob =
+            null;
+
+
+        document
+            .getElementById(
+                "dashboard"
+            )
+            .classList.add(
+                "section-hidden"
+            );
+
+
+        document
+            .getElementById(
+                "reportPath"
+            )
+            .textContent =
+                result.report ||
+                "Report created.";
+
+
+        document
+            .getElementById(
+                "reportBox"
+            )
+            .classList.add(
+                "show"
+            );
+
+
+        showNotice(
+            "Job " +
+            (
+                finishedJob?.id ||
+                ""
+            ) +
+            " ended successfully. Report created.",
+            8000,
+            "success"
+        );
+
+
+        await refreshHistory();
+
+
+        /*
+         * Stop Agent after report creation.
+         */
+
+        setTimeout(
+            async () => {
+
+                try {
+
+                    await api(
+                        "/agent/stop",
+                        {
+                            method: "POST",
+                            timeoutMs: 5000
+                        }
+                    );
+
+                }
+                catch {
+
+                    /*
+                     * Agent may terminate before
+                     * browser receives response.
+                     */
+
+                }
+
+
+                const stopButton =
+                    document.getElementById(
+                        "stopAgentButton"
+                    );
+
+
+                if (endButton) {
+
+                    endButton.disabled =
+                        true;
+
+                }
+
+
+                if (stopButton) {
+
+                    stopButton.disabled =
+                        false;
+
+                }
+
+
+                await sleep(1200);
+
+
+                await checkAgent();
+
+
+                setRefreshStatus(
+                    new Date()
+                        .toLocaleTimeString() +
+                    (
+                        lastAgentOnline
+                            ? " · Agent Online"
+                            : " · Agent Offline"
+                    )
+                );
+
+            },
+            500
+        );
+
+
+    }
+    catch (error) {
+
+        showNotice(
+            "Unable to end job: " +
+            error.message,
+            8000,
+            "error"
+        );
+
+    }
+    finally {
+
+        endJobRunning =
+            false;
+
+
+        if (
+            endButton &&
+            currentJob
+        ) {
+
+            endButton.disabled =
+                false;
+
+        }
+
+
+        startAutoRefresh();
+
+    }
+
+}
+
+
+// ============================================================
+// OPEN REPORT
+// ============================================================
+
+async function openReport() {
+
+    if (
+        !lastReport
+    ) {
+
+        showNotice(
+            "No report path available.",
+            5000,
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    try {
+
+        const jobId =
+            extractJobIdFromReport(
+                lastReport
+            );
+
+
+        if (
+            jobId
+        ) {
+
+            const result =
+                await api(
+                    "/report/open?jobId=" +
+                    encodeURIComponent(
+                        jobId
+                    )
+                );
+
+
+            if (
+                result.success
+            ) {
+
+                return;
+
+            }
+
+        }
+
+    }
+    catch {
+    }
+
+
+    const fileUrl =
+        "file:///" +
+        String(
+            lastReport
+        )
+        .replaceAll(
+            "\\",
+            "/"
+        );
+
+
+    window.open(
+        fileUrl,
+        "_blank"
+    );
+
+}
+
+
+// ============================================================
+// EXTRACT JOB ID
+// ============================================================
+
+function extractJobIdFromReport(
+    path
+) {
+
+    const name =
+        String(
+            path
+        )
+        .split("\\")
+        .pop()
+        .split("/")
+        .pop();
+
+
+    return name.replace(
+        /\.html$/i,
+        ""
+    );
+
+}
+
+
+// ============================================================
+// STOP AGENT
+// ============================================================
+
+async function stopAgentManually() {
+
+    const confirmed =
+        confirm(
+            "Stop the local IT Diagnostic Agent?"
+        );
+
+
+    if (!confirmed) {
+
+        return;
+
+    }
+
+
+    try {
+
+        showNotice(
+            "Stopping local Agent...",
+            5000,
+            "info"
+        );
+
+
+        await api(
+            "/agent/stop",
+            {
+                method: "POST",
+                timeoutMs: 5000
+            }
+        );
+
+
+        await sleep(1200);
+
+
+        const online =
+            await checkAgent();
+
+
+        if (online) {
+
+            showNotice(
+                "Agent is still online.",
+                5000,
+                "error"
+            );
+
+        }
+        else {
+
+            showNotice(
+                "Agent is offline.",
+                5000,
+                "success"
+            );
+
+        }
+
+
+        setRefreshStatus(
+            new Date()
+                .toLocaleTimeString() +
+            (
+                online
+                    ? " · Agent Online"
+                    : " · Agent Offline"
+            )
+        );
+
+    }
+    catch (error) {
+
+        await sleep(1200);
+
+
+        const online =
+            await checkAgent();
+
+
+        if (!online) {
+
+            showNotice(
+                "Agent stopped.",
+                5000,
+                "success"
+            );
+
+        }
+        else {
+
+            showNotice(
+                "Agent stop request failed: " +
+                error.message,
+                8000,
+                "error"
+            );
+
+        }
+
+    }
+
+}
+
+
+// ============================================================
+// HISTORY
+// ============================================================
+
+async function refreshHistory() {
+
+    try {
+
+        const result =
+            await api(
+                "/history"
+            );
+
+
+        const table =
+            document.getElementById(
+                "historyTable"
+            );
+
+
+        table.innerHTML =
+            "";
+
+
+        const history =
+            Array.isArray(
+                result.data
+            )
+                ? result.data
+                : [];
+
+
+        for (
+            const item
+            of history
+                .slice()
+                .reverse()
+        ) {
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+
+            row.innerHTML =
+                `
+                <td>
+                ${escapeHtml(
+                    item.id ||
+                    ""
+                )}
+                </td>
+
+                <td>
+                ${escapeHtml(
+                    item.computer ||
+                    ""
+                )}
+                </td>
+
+                <td>
+                ${escapeHtml(
+                    item.user ||
+                    ""
+                )}
+                </td>
+
+                <td>
+                ${escapeHtml(
+                    item.startedAt ||
+                    ""
+                )}
+                </td>
+
+                <td>
+                ${escapeHtml(
+                    item.endedAt ||
+                    ""
+                )}
+                </td>
+
+                <td>
+                    <span class="badge badge-green">
+                    ${escapeHtml(
+                        item.status ||
+                        "COMPLETED"
+                    )}
+                    </span>
+                </td>
+                `;
+
+
+            table.appendChild(
+                row
+            );
+
+        }
+
+
+        if (
+            !history.length
+        ) {
+
+            table.innerHTML =
+                `
+                <tr>
+                    <td
+                        colspan="6"
+                        class="empty">
+
+                        No job history.
+
+                    </td>
+                </tr>
+                `;
+
+        }
+
+    }
+    catch {
+    }
+
+}
+
+
+// ============================================================
 // SET TEXT
 // ============================================================
 
@@ -4367,7 +4657,9 @@ function setText(
 
 
     if (!element) {
+
         return;
+
     }
 
 
@@ -4377,7 +4669,8 @@ function setText(
         value === ""
     ) {
 
-        element.textContent = "-";
+        element.textContent =
+            "-";
 
     }
     else {
@@ -4447,7 +4740,9 @@ function escapeHtml(
 
 
         if (!element) {
+
             return;
+
         }
 
 
@@ -4472,12 +4767,11 @@ function escapeHtml(
 
 (async function init() {
 
-    await checkAgent();
+    await refreshAll();
 
-    await refreshHistory();
+    startAutoRefresh();
 
 })();
-
 </script>
 
 </body>
