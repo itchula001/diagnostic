@@ -1533,14 +1533,78 @@ Write-Host "Listening on $AgentUrl" `
 Write-Host ""
 
 # ============================================================
-# REQUEST LOOP
+# REQUEST LOOP V5.2
 # ============================================================
+
+function Write-AgentError {
+
+    param(
+        [string]$Path,
+        [string]$Method,
+        [object]$Exception
+    )
+
+    try {
+
+        $logFile =
+            Join-Path `
+                $AgentDataDir `
+                "agent.log"
+
+        $line =
+            "{0} | {1} {2} | {3}" -f `
+                (Get-Date -Format "yyyy-MM-dd HH:mm:ss"),
+                $Method,
+                $Path,
+                $Exception.Exception.Message
+
+        Add-Content `
+            -Path $logFile `
+            -Value $line `
+            -Encoding UTF8
+
+    }
+    catch {
+    }
+}
+
+
+function Send-InternalError {
+
+    param(
+        $Context,
+        [string]$Message
+    )
+
+    try {
+
+        if ($null -eq $Context) {
+            return
+        }
+
+        Send-JsonResponse `
+            $Context `
+            @{
+                success = $false
+                message = $Message
+            } `
+            500
+
+    }
+    catch {
+    }
+}
+
 
 try {
 
     while ($listener.IsListening) {
 
         $context = $null
+
+        # ====================================================
+        # GET REQUEST
+        # ====================================================
 
         try {
 
@@ -1554,373 +1618,357 @@ try {
                 break
             }
 
+            Start-Sleep -Milliseconds 50
+
             continue
         }
+
 
         if ($null -eq $context) {
             continue
         }
 
-        $request =
-            $context.Request
 
-        $path =
-            $request.Url.AbsolutePath
+        # ====================================================
+        # EVERYTHING FOR ONE REQUEST IS PROTECTED
+        # ====================================================
 
-        $method =
-            $request.HttpMethod
+        try {
 
-        $response =
-            $context.Response
+            $request =
+                $context.Request
 
-        # ----------------------------------------------------
-        # CORS
-        # ----------------------------------------------------
+            $path =
+                $request.Url.AbsolutePath
 
-        $response.Headers.Add(
-            "Access-Control-Allow-Origin",
-            "*"
-        )
+            $method =
+                $request.HttpMethod
 
-        $response.Headers.Add(
-            "Access-Control-Allow-Methods",
-            "GET,POST,OPTIONS"
-        )
+            $response =
+                $context.Response
 
-        $response.Headers.Add(
-            "Access-Control-Allow-Headers",
-            "Content-Type"
-        )
 
-        # ----------------------------------------------------
-        # OPTIONS
-        # ----------------------------------------------------
-
-        if ($method -eq "OPTIONS") {
-
-            $response.StatusCode = 204
-            $response.Close()
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # ROOT
-        # ----------------------------------------------------
-
-        if ($path -eq "/") {
-
-            Send-JsonResponse `
-                $context `
-                @{
-                    success = $true
-                    agent =
-                        "IT Diagnostic Agent V5.1"
-                    version =
-                        "5.1"
-                    status =
-                        "online"
-                }
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # STATUS
-        # ----------------------------------------------------
-
-        if ($path -eq "/agent/status") {
-
-            Send-JsonResponse `
-                $context `
-                @{
-                    success = $true
-                    online = $true
-                    version = "5.1"
-                    agent =
-                        "IT Diagnostic Agent V5.1"
-                    pid = $PID
-                    computer =
-                        $env:COMPUTERNAME
-                    user =
-                        $env:USERNAME
-                }
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # SYSTEM
-        # ----------------------------------------------------
-
-        if ($path -eq "/system") {
-
-            Send-JsonResponse `
-                $context `
-                @{
-                    success = $true
-                    data =
-                        Get-SystemInfo
-                }
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # METRICS
-        # ----------------------------------------------------
-
-        if ($path -eq "/metrics") {
-
-            Send-JsonResponse `
-                $context `
-                @{
-                    success = $true
-                    data =
-                        Get-Metrics
-                }
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # NETWORK
-        # ----------------------------------------------------
-
-        if ($path -eq "/network") {
-
-            Send-JsonResponse `
-                $context `
-                @{
-                    success = $true
-                    data =
-                        Get-NetworkInfo
-                }
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # SERVICES
-        # ----------------------------------------------------
-
-        if ($path -eq "/services") {
-
-            Send-JsonResponse `
-                $context `
-                @{
-                    success = $true
-                    data =
-                        Get-ServiceStatus
-                }
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # PROCESSES
-        # ----------------------------------------------------
-
-        if ($path -eq "/processes") {
-
-            Send-JsonResponse `
-                $context `
-                @{
-                    success = $true
-                    data =
-                        Get-ProcessStatus
-                }
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # EVENTS
-        # ----------------------------------------------------
-
-        if ($path -eq "/events") {
-
-            Send-JsonResponse `
-                $context `
-                @{
-                    success = $true
-                    data =
-                        Get-Events
-                }
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # DIAGNOSE
-        # ----------------------------------------------------
-
-        if ($path -eq "/diagnose") {
-
-            Send-JsonResponse `
-                $context `
-                @{
-                    success = $true
-                    data =
-                        Run-Diagnostics
-                }
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # START JOB
-        # ----------------------------------------------------
-
-        if (
-            $path -eq "/job/start" -and
-            $method -eq "POST"
-        ) {
-
-            Send-JsonResponse `
-                $context `
-                (Start-NewJob)
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # JOB STATUS
-        # ----------------------------------------------------
-
-        if ($path -eq "/job/status") {
-
-            Send-JsonResponse `
-                $context `
-                @{
-                    success = $true
-                    active =
-                        ($null -ne $global:CurrentJob)
-                    job =
-                        $global:CurrentJob
-                }
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # END JOB
-        # ----------------------------------------------------
-
-        if (
-            $path -eq "/job/end" -and
-            $method -eq "POST"
-        ) {
-
-            Send-JsonResponse `
-                $context `
-                (End-CurrentJob)
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # HISTORY
-        # ----------------------------------------------------
-
-        if ($path -eq "/history") {
-
-            Send-JsonResponse `
-                $context `
-                @{
-                    success = $true
-                    data =
-                        @($global:History)
-                }
-
-            continue
-        }
-
-        # ----------------------------------------------------
-        # KILL
-        # ----------------------------------------------------
-
-        if (
-            $path -eq "/kill" -and
-            $method -eq "POST"
-        ) {
+            # ------------------------------------------------
+            # CORS
+            # ------------------------------------------------
 
             try {
 
-                $data =
-                    Read-RequestBody `
-                        $request
+                $response.Headers.Add(
+                    "Access-Control-Allow-Origin",
+                    "*"
+                )
 
-                $pidValue =
-                    [int]$data.pid
+                $response.Headers.Add(
+                    "Access-Control-Allow-Methods",
+                    "GET,POST,OPTIONS"
+                )
 
-                Send-JsonResponse `
-                    $context `
-                    (
-                        Stop-TargetProcess `
-                            -ProcessId $pidValue
-                    )
+                $response.Headers.Add(
+                    "Access-Control-Allow-Headers",
+                    "Content-Type"
+                )
+
             }
             catch {
+            }
+
+
+            # ------------------------------------------------
+            # OPTIONS
+            # ------------------------------------------------
+
+            if ($method -eq "OPTIONS") {
+
+                try {
+
+                    $response.StatusCode = 204
+                    $response.Close()
+
+                }
+                catch {
+                }
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # ROOT
+            # ------------------------------------------------
+
+            if ($path -eq "/") {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $false
-                        message =
-                            $_.Exception.Message
+                        success = $true
+                        agent =
+                            "IT Diagnostic Agent V5.2"
+                        version =
+                            "5.2"
+                        status =
+                            "online"
                     }
+
+                continue
             }
 
-            continue
-        }
 
-        # ----------------------------------------------------
-        # REPORT STATUS
-        # ----------------------------------------------------
+            # ------------------------------------------------
+            # AGENT STATUS
+            # ------------------------------------------------
 
-        if ($path -eq "/report/status") {
+            if ($path -eq "/agent/status") {
 
-            $jobId =
-                $request.QueryString["jobId"]
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $true
+                        online = $true
+                        version = "5.2"
+                        agent =
+                            "IT Diagnostic Agent V5.2"
+                        pid = $PID
+                        computer =
+                            $env:COMPUTERNAME
+                        user =
+                            $env:USERNAME
+                    }
 
-            Send-JsonResponse `
-                $context `
-                (
-                    Get-ReportStatus `
-                        -JobId $jobId
-                )
+                continue
+            }
 
-            continue
-        }
 
-        # ----------------------------------------------------
-        # REPORT OPEN
-        # ----------------------------------------------------
+            # ------------------------------------------------
+            # SYSTEM
+            # ------------------------------------------------
 
-        if ($path -eq "/report/open") {
+            if ($path -eq "/system") {
 
-            $jobId =
-                $request.QueryString["jobId"]
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $true
+                        data =
+                            Get-SystemInfo
+                    }
 
-            $status =
-                Get-ReportStatus `
-                    -JobId $jobId
+                continue
+            }
 
-            if ($status.ready) {
+
+            # ------------------------------------------------
+            # METRICS
+            # ------------------------------------------------
+
+            if ($path -eq "/metrics") {
+
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $true
+                        data =
+                            Get-Metrics
+                    }
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # NETWORK
+            # ------------------------------------------------
+
+            if ($path -eq "/network") {
+
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $true
+                        data =
+                            Get-NetworkInfo
+                    }
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # SERVICES
+            # ------------------------------------------------
+
+            if ($path -eq "/services") {
+
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $true
+                        data =
+                            Get-ServiceStatus
+                    }
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # PROCESSES
+            # ------------------------------------------------
+
+            if ($path -eq "/processes") {
+
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $true
+                        data =
+                            Get-ProcessStatus
+                    }
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # EVENTS
+            # ------------------------------------------------
+
+            if ($path -eq "/events") {
+
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $true
+                        data =
+                            Get-Events
+                    }
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # DIAGNOSE
+            # ------------------------------------------------
+
+            if ($path -eq "/diagnose") {
+
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $true
+                        data =
+                            Run-Diagnostics
+                    }
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # START JOB
+            # ------------------------------------------------
+
+            if (
+                $path -eq "/job/start" -and
+                $method -eq "POST"
+            ) {
+
+                $result =
+                    Start-NewJob
+
+                Send-JsonResponse `
+                    $context `
+                    $result
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # JOB STATUS
+            # ------------------------------------------------
+
+            if ($path -eq "/job/status") {
+
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $true
+                        active =
+                            ($null -ne $global:CurrentJob)
+                        job =
+                            $global:CurrentJob
+                    }
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # END JOB
+            # ------------------------------------------------
+
+            if (
+                $path -eq "/job/end" -and
+                $method -eq "POST"
+            ) {
+
+                $result =
+                    End-CurrentJob
+
+                Send-JsonResponse `
+                    $context `
+                    $result
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # HISTORY
+            # ------------------------------------------------
+
+            if ($path -eq "/history") {
+
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success = $true
+                        data =
+                            @($global:History)
+                    }
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # KILL PROCESS
+            # ------------------------------------------------
+
+            if (
+                $path -eq "/kill" -and
+                $method -eq "POST"
+            ) {
 
                 try {
 
-                    Start-Process `
-                        -FilePath $status.path
+                    $data =
+                        Read-RequestBody `
+                            $request
+
+                    $pidValue =
+                        [int]$data.pid
+
+                    $result =
+                        Stop-TargetProcess `
+                            -ProcessId $pidValue
 
                     Send-JsonResponse `
                         $context `
-                        @{
-                            success = $true
-                            path =
-                                $status.path
-                        }
+                        $result
 
                 }
                 catch {
@@ -1931,113 +1979,282 @@ try {
                             success = $false
                             message =
                                 $_.Exception.Message
+                        } `
+                        400
+                }
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # REPORT STATUS
+            # ------------------------------------------------
+
+            if ($path -eq "/report/status") {
+
+                $jobId =
+                    $request.QueryString["jobId"]
+
+                $result =
+                    Get-ReportStatus `
+                        -JobId $jobId
+
+                Send-JsonResponse `
+                    $context `
+                    $result
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # REPORT OPEN
+            # ------------------------------------------------
+
+            if ($path -eq "/report/open") {
+
+                $jobId =
+                    $request.QueryString["jobId"]
+
+                $status =
+                    Get-ReportStatus `
+                        -JobId $jobId
+
+
+                if ($status.ready) {
+
+                    try {
+
+                        Start-Process `
+                            -FilePath $status.path
+
+                        Send-JsonResponse `
+                            $context `
+                            @{
+                                success = $true
+                                path =
+                                    $status.path
+                            }
+
+                    }
+                    catch {
+
+                        Send-JsonResponse `
+                            $context `
+                            @{
+                                success = $false
+                                message =
+                                    $_.Exception.Message
+                            } `
+                            500
+                    }
+
+                }
+                else {
+
+                    Send-JsonResponse `
+                        $context `
+                        @{
+                            success = $false
+                            ready = $false
+                            message =
+                                "Report is not ready."
                         }
                 }
 
+                continue
             }
-            else {
+
+
+            # ------------------------------------------------
+            # AGENT STOP
+            # ------------------------------------------------
+            #
+            # IMPORTANT:
+            # Agent will ONLY stop here when:
+            #
+            # POST /agent/stop
+            #
+            # is explicitly received.
+            #
+            # Normal refresh requests can no longer fall
+            # through into this logic.
+            # ------------------------------------------------
+
+            if (
+                $path -eq "/agent/stop" -and
+                $method -eq "POST"
+            ) {
+
+                $targetPid =
+                    $PID
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $false
-                        ready = $false
+                        success = $true
                         message =
-                            "Report is not ready."
+                            "Agent stopping."
                     }
+
+
+                Start-Job -ScriptBlock {
+
+                    param(
+                        $ProcessId,
+                        $TempDirectory
+                    )
+
+
+                    Start-Sleep `
+                        -Milliseconds 800
+
+
+                    # ----------------------------------------
+                    # CLEAN TEMP
+                    # ----------------------------------------
+
+                    try {
+
+                        if (
+                            Test-Path `
+                                $TempDirectory
+                        ) {
+
+                            Remove-Item `
+                                -Path $TempDirectory `
+                                -Recurse `
+                                -Force `
+                                -ErrorAction SilentlyContinue
+                        }
+
+                    }
+                    catch {
+                    }
+
+
+                    Start-Sleep `
+                        -Milliseconds 300
+
+
+                    # ----------------------------------------
+                    # STOP AGENT
+                    # ----------------------------------------
+
+                    try {
+
+                        Stop-Process `
+                            -Id $ProcessId `
+                            -Force `
+                            -ErrorAction SilentlyContinue
+
+                    }
+                    catch {
+                    }
+
+                } `
+                -ArgumentList `
+                    $targetPid,
+                    $AgentTempDir |
+                Out-Null
+
+
+                continue
             }
 
-            continue
-        }
 
-        # ----------------------------------------------------
-        # AGENT STOP
-        # ----------------------------------------------------
-
-        if (
-            $path -eq "/agent/stop" -and
-            $method -eq "POST"
-        ) {
-
-            $targetPid =
-                $PID
+            # ------------------------------------------------
+            # 404
+            # ------------------------------------------------
 
             Send-JsonResponse `
                 $context `
                 @{
-                    success = $true
+                    success = $false
                     message =
-                        "Agent stopping."
-                }
+                        "Endpoint not found."
+                    path =
+                        $path
+                } `
+                404
 
-            Start-Job -ScriptBlock {
 
-                param(
-                    $ProcessId,
-                    $TempDirectory
-                )
+        }
+        catch {
 
-                Start-Sleep -Milliseconds 800
+            # =================================================
+            # CRITICAL FIX
+            #
+            # A single endpoint error MUST NOT kill Agent.
+            # =================================================
 
-                try {
+            Write-AgentError `
+                -Path $path `
+                -Method $method `
+                -Exception $_
 
-                    if (
-                        Test-Path -LiteralPath $TempDirectory
-                    ) {
 
-                        Remove-Item `
-                            -LiteralPath $TempDirectory `
-                            -Recurse `
-                            -Force `
-                            -ErrorAction SilentlyContinue
-                    }
+            try {
 
-                }
-                catch {
-                }
+                Send-InternalError `
+                    -Context $context `
+                    -Message `
+                        ("Agent request error: " +
+                        $_.Exception.Message)
 
-                Start-Sleep -Milliseconds 300
+            }
+            catch {
+            }
 
-                try {
 
-                    Stop-Process `
-                        -Id $ProcessId `
-                        -Force `
-                        -ErrorAction SilentlyContinue
-
-                }
-                catch {
-                }
-
-            } -ArgumentList $targetPid, $AgentTempDir | Out-Null
+            # IMPORTANT
+            # Continue listening for next request.
 
             continue
         }
+    }
 
-        # ----------------------------------------------------
-        # 404
-        # ----------------------------------------------------
+}
+catch {
 
-        Send-JsonResponse `
-            $context `
-            @{
-                success = $false
-                message =
-                    "Endpoint not found."
-                path =
-                    $path
-            } `
-            404
+    # ========================================================
+    # MAIN LOOP SAFETY NET
+    # ========================================================
+
+    try {
+
+        Write-AgentError `
+            -Path "MAIN-LOOP" `
+            -Method "SYSTEM" `
+            -Exception $_
+
+    }
+    catch {
     }
 
 }
 finally {
 
+    # ========================================================
+    # CLEAN SHUTDOWN
+    # ========================================================
+
     try {
 
         if ($listener.IsListening) {
+
             $listener.Stop()
         }
+
+    }
+    catch {
+    }
+
+
+    try {
+
+        $listener.Close()
 
     }
     catch {
