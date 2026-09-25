@@ -1,42 +1,159 @@
 # ============================================================
-# IT FIELD DIAGNOSTIC AGENT V5.1
+# IT FIELD DIAGNOSTIC AGENT V5.3.1
 # ============================================================
 
 $ErrorActionPreference = "SilentlyContinue"
 
-$AgentUrl = "http://127.0.0.1:8765/"
-$AgentTempDir = Join-Path $env:TEMP "ITDiagV5"
-$AgentDataDir = Join-Path $env:LOCALAPPDATA "ITDiagV5"
-$HistoryFile = Join-Path $AgentDataDir "history.json"
-$ReportDir = Join-Path ([Environment]::GetFolderPath("Desktop")) "ITDiag-Reports"
+$AgentUrl =
+    "http://127.0.0.1:8765/"
 
-New-Item -ItemType Directory -Force -Path $AgentTempDir | Out-Null
-New-Item -ItemType Directory -Force -Path $AgentDataDir | Out-Null
-New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
+$AgentTempDir =
+    Join-Path `
+        $env:TEMP `
+        "ITDiagV5"
+
+$AgentDataDir =
+    Join-Path `
+        $env:LOCALAPPDATA `
+        "ITDiagV5"
+
+$HistoryFile =
+    Join-Path `
+        $AgentDataDir `
+        "history.json"
+
+$ReportDir =
+    Join-Path `
+        ([Environment]::GetFolderPath("Desktop")) `
+        "ITDiag-Reports"
+
+$AgentLogFile =
+    Join-Path `
+        $AgentDataDir `
+        "agent.log"
+
+
+New-Item `
+    -ItemType Directory `
+    -Force `
+    -Path $AgentTempDir |
+    Out-Null
+
+New-Item `
+    -ItemType Directory `
+    -Force `
+    -Path $AgentDataDir |
+    Out-Null
+
+New-Item `
+    -ItemType Directory `
+    -Force `
+    -Path $ReportDir |
+    Out-Null
+
+
+# ============================================================
+# LOGGING
+# ============================================================
+
+function Write-AgentError {
+
+    param(
+        [string]$Message
+    )
+
+    try {
+
+        $line =
+            "$(Get-Date -Format s) [ERROR] $Message"
+
+        Add-Content `
+            -LiteralPath $AgentLogFile `
+            -Value $line `
+            -Encoding UTF8
+
+    }
+    catch {
+    }
+
+}
+
+
+function Write-AgentInfo {
+
+    param(
+        [string]$Message
+    )
+
+    try {
+
+        $line =
+            "$(Get-Date -Format s) [INFO] $Message"
+
+        Add-Content `
+            -LiteralPath $AgentLogFile `
+            -Value $line `
+            -Encoding UTF8
+
+    }
+    catch {
+    }
+
+}
+
 
 # ============================================================
 # GLOBAL STATE
 # ============================================================
 
-$global:CurrentJob = $null
-$global:History = @()
+$global:CurrentJob =
+    $null
 
-if (Test-Path -LiteralPath $HistoryFile) {
+$global:History =
+    @()
+
+
+# ============================================================
+# LOAD HISTORY
+# ============================================================
+
+if (Test-Path $HistoryFile) {
+
     try {
-        $raw = Get-Content $HistoryFile -Raw
 
-        if (-not [string]::IsNullOrWhiteSpace($raw)) {
-            $parsed = $raw | ConvertFrom-Json
+        $raw =
+            Get-Content `
+                $HistoryFile `
+                -Raw
+
+        if (
+            -not [string]::IsNullOrWhiteSpace(
+                $raw
+            )
+        ) {
+
+            $parsed =
+                $raw |
+                ConvertFrom-Json
 
             if ($null -ne $parsed) {
-                $global:History = @($parsed)
+
+                $global:History =
+                    @(
+                        $parsed
+                    )
             }
         }
+
     }
     catch {
-        $global:History = @()
+
+        $global:History =
+            @()
     }
+
 }
+
 
 # ============================================================
 # SAVE HISTORY
@@ -47,15 +164,21 @@ function Save-History {
     try {
 
         $global:History |
-            ConvertTo-Json -Depth 10 |
+            ConvertTo-Json `
+                -Depth 20 |
             Set-Content `
                 -Path $HistoryFile `
                 -Encoding UTF8
 
     }
     catch {
+
+        Write-AgentError `
+            $_.Exception.Message
     }
+
 }
+
 
 # ============================================================
 # JSON RESPONSE
@@ -73,10 +196,14 @@ function Send-JsonResponse {
 
         $json =
             $Data |
-            ConvertTo-Json -Depth 20 -Compress
+            ConvertTo-Json `
+                -Depth 30 `
+                -Compress
 
         $bytes =
-            [System.Text.Encoding]::UTF8.GetBytes($json)
+            [System.Text.Encoding]::UTF8.GetBytes(
+                $json
+            )
 
         $response =
             $Context.Response
@@ -103,8 +230,13 @@ function Send-JsonResponse {
 
     }
     catch {
+
+        Write-AgentError `
+            $_.Exception.Message
     }
+
 }
+
 
 # ============================================================
 # READ REQUEST BODY
@@ -129,12 +261,18 @@ function Read-RequestBody {
 
         $reader.Close()
 
-        if ([string]::IsNullOrWhiteSpace($body)) {
+        if (
+            [string]::IsNullOrWhiteSpace(
+                $body
+            )
+        ) {
+
             return $null
         }
 
         return (
-            $body | ConvertFrom-Json
+            $body |
+            ConvertFrom-Json
         )
 
     }
@@ -142,7 +280,63 @@ function Read-RequestBody {
 
         return $null
     }
+
 }
+
+
+# ============================================================
+# ADD JOB EVENT
+# ============================================================
+
+function Add-JobEvent {
+
+    param(
+        [string]$Action,
+        [string]$Result
+    )
+
+    if (
+        $null -eq
+        $global:CurrentJob
+    ) {
+
+        return
+    }
+
+    if (
+        $null -eq
+        $global:CurrentJob.events
+    ) {
+
+        $global:CurrentJob |
+            Add-Member `
+                -MemberType NoteProperty `
+                -Name events `
+                -Value @() `
+                -Force
+    }
+
+    $event =
+        [PSCustomObject]@{
+
+            time =
+                (Get-Date).ToString("s")
+
+            action =
+                $Action
+
+            result =
+                $Result
+        }
+
+    $global:CurrentJob.events =
+        @(
+            $global:CurrentJob.events
+        ) +
+        $event
+
+}
+
 
 # ============================================================
 # SYSTEM INFO
@@ -153,13 +347,16 @@ function Get-SystemInfo {
     try {
 
         $os =
-            Get-CimInstance Win32_OperatingSystem
+            Get-CimInstance `
+                Win32_OperatingSystem
 
         $computer =
-            Get-CimInstance Win32_ComputerSystem
+            Get-CimInstance `
+                Win32_ComputerSystem
 
         $bios =
-            Get-CimInstance Win32_BIOS
+            Get-CimInstance `
+                Win32_BIOS
 
         return [PSCustomObject]@{
 
@@ -199,119 +396,206 @@ function Get-SystemInfo {
 
         return [PSCustomObject]@{
 
-            computer = $env:COMPUTERNAME
-            user = $env:USERNAME
-            manufacturer = ""
-            model = ""
-            windows = ""
-            build = ""
-            architecture = ""
-            memoryGB = 0
-            serial = ""
+            computer =
+                $env:COMPUTERNAME
+
+            user =
+                $env:USERNAME
+
+            manufacturer =
+                ""
+
+            model =
+                ""
+
+            windows =
+                ""
+
+            build =
+                ""
+
+            architecture =
+                ""
+
+            memoryGB =
+                0
+
+            serial =
+                ""
         }
     }
+
 }
 
+
 # ============================================================
-# METRICS
+# METRICS V5.3.2
 # ============================================================
 
 function Get-Metrics {
 
     try {
 
+        # ----------------------------------------------------
+        # CPU
+        # ----------------------------------------------------
+
         $cpuData =
-            Get-CimInstance Win32_Processor
+            @(Get-CimInstance Win32_Processor -ErrorAction Stop)
 
-        $cpu =
-            [math]::Round(
-                (
-                    $cpuData |
-                    Measure-Object LoadPercentage -Average
-                ).Average,
-                0
-            )
+        $cpuAverage =
+            (
+                $cpuData |
+                Measure-Object `
+                    -Property LoadPercentage `
+                    -Average
+            ).Average
 
-        $os =
-            Get-CimInstance Win32_OperatingSystem
-
-        $totalRam =
-            [double]$os.TotalVisibleMemorySize
-
-        $freeRam =
-            [double]$os.FreePhysicalMemory
-
-        $ram =
-            if ($totalRam -gt 0) {
+        if ($null -eq $cpuAverage) {
+            $cpu = 0
+        }
+        else {
+            $cpu =
                 [math]::Round(
-                    (($totalRam - $freeRam) / $totalRam) * 100,
+                    [double]$cpuAverage,
                     0
                 )
-            }
-            else {
-                0
-            }
+        }
 
-        $ramFreeGB =
-            [math]::Round(
-                $freeRam / 1MB,
-                2
-            )
 
-        $disk =
-            Get-CimInstance Win32_LogicalDisk `
-                -Filter "DeviceID='C:'"
+        # ----------------------------------------------------
+        # MEMORY
+        # ----------------------------------------------------
 
-        $diskUsage =
-            if ($disk.Size -gt 0) {
+        $os =
+            Get-CimInstance `
+                Win32_OperatingSystem `
+                -ErrorAction Stop
+
+        $totalRamKB =
+            [double]$os.TotalVisibleMemorySize
+
+        $freeRamKB =
+            [double]$os.FreePhysicalMemory
+
+        if ($totalRamKB -gt 0) {
+
+            $ram =
                 [math]::Round(
                     (
-                        ($disk.Size - $disk.FreeSpace) /
-                        $disk.Size
+                        (
+                            $totalRamKB -
+                            $freeRamKB
+                        ) /
+                        $totalRamKB
                     ) * 100,
                     0
                 )
-            }
-            else {
-                0
-            }
 
-        $diskFreeGB =
+        }
+        else {
+
+            $ram = 0
+
+        }
+
+        $ramFreeGB =
             [math]::Round(
-                $disk.FreeSpace / 1GB,
+                $freeRamKB / 1MB,
                 2
             )
 
-        return [PSCustomObject]@{
 
-            cpu =
-                $cpu
+        # ----------------------------------------------------
+        # DISK C:
+        # ----------------------------------------------------
 
-            ram =
-                $ram
+        $disk =
+            Get-CimInstance `
+                Win32_LogicalDisk `
+                -Filter "DeviceID='C:'" `
+                -ErrorAction Stop
 
-            ramFreeGB =
-                $ramFreeGB
+        if (
+            $null -ne $disk -and
+            [double]$disk.Size -gt 0
+        ) {
 
-            disk =
-                $diskUsage
+            $diskUsage =
+                [math]::Round(
+                    (
+                        (
+                            [double]$disk.Size -
+                            [double]$disk.FreeSpace
+                        ) /
+                        [double]$disk.Size
+                    ) * 100,
+                    0
+                )
 
-            diskFreeGB =
-                $diskFreeGB
+            $diskFreeGB =
+                [math]::Round(
+                    [double]$disk.FreeSpace / 1GB,
+                    2
+                )
+
         }
+        else {
+
+            $diskUsage = 0
+            $diskFreeGB = 0
+
+        }
+
+
+        # ----------------------------------------------------
+        # IMPORTANT
+        # Return ONE object only
+        # ----------------------------------------------------
+
+        $result =
+            [PSCustomObject]@{
+
+                cpu =
+                    [int]$cpu
+
+                ram =
+                    [int]$ram
+
+                ramFreeGB =
+                    [double]$ramFreeGB
+
+                disk =
+                    [int]$diskUsage
+
+                diskFreeGB =
+                    [double]$diskFreeGB
+            }
+
+
+        return ,$result
 
     }
     catch {
 
-        return [PSCustomObject]@{
-            cpu = 0
-            ram = 0
-            ramFreeGB = 0
-            disk = 0
-            diskFreeGB = 0
-        }
+        # ----------------------------------------------------
+        # SAFE FALLBACK
+        # ----------------------------------------------------
+
+        $result =
+            [PSCustomObject]@{
+
+                cpu = 0
+                ram = 0
+                ramFreeGB = 0
+                disk = 0
+                diskFreeGB = 0
+            }
+
+        return ,$result
     }
 }
+
 
 # ============================================================
 # NETWORK
@@ -342,21 +626,21 @@ function Get-NetworkInfo {
                     ) -join ", "
             }
 
-            $gateway =
-                if ($item.DefaultIPGateway) {
-                    $item.DefaultIPGateway -join ", "
-                }
-                else {
-                    ""
-                }
+            $gateway = ""
 
-            $dns =
-                if ($item.DNSServerSearchOrder) {
-                    $item.DNSServerSearchOrder -join ", "
-                }
-                else {
-                    ""
-                }
+            if ($item.DefaultIPGateway) {
+
+                $gateway =
+                    ($item.DefaultIPGateway -join ", ")
+            }
+
+            $dns = ""
+
+            if ($item.DNSServerSearchOrder) {
+
+                $dns =
+                    ($item.DNSServerSearchOrder -join ", ")
+            }
 
             $adapters +=
                 [PSCustomObject]@{
@@ -393,6 +677,7 @@ function Get-NetworkInfo {
             [bool]$test
     }
     catch {
+
         $internet = $false
     }
 
@@ -405,6 +690,8 @@ function Get-NetworkInfo {
             @($adapters)
     }
 }
+
+
 
 # ============================================================
 # SERVICES
@@ -423,14 +710,19 @@ function Get-ServiceStatus {
             "BITS"
         )
 
-    $result = @()
+    $result =
+        @()
 
-    foreach ($name in $important) {
+    foreach (
+        $name
+        in $important
+    ) {
 
         try {
 
             $service =
-                Get-CimInstance Win32_Service `
+                Get-CimInstance `
+                    Win32_Service `
                     -Filter "Name='$name'"
 
             if ($service) {
@@ -451,13 +743,19 @@ function Get-ServiceStatus {
                             $service.StartMode
                     }
             }
+
         }
         catch {
         }
+
     }
 
-    return @($result)
+    return @(
+        $result
+    )
+
 }
+
 
 # ============================================================
 # PROCESSES
@@ -465,37 +763,43 @@ function Get-ServiceStatus {
 
 function Get-ProcessStatus {
 
-    $result = @()
+    $result =
+        @()
 
     try {
 
         $items =
             Get-Process |
-            Sort-Object WorkingSet64 -Descending |
-            Select-Object -First 60
+            Sort-Object `
+                WorkingSet64 `
+                -Descending |
+            Select-Object `
+                -First 60
 
-        foreach ($item in $items) {
+        foreach (
+            $item
+            in $items
+        ) {
 
-            $cpu = 0
+            $cpu =
+                0
 
             try {
 
-                $cpu =
-                    [math]::Round(
-                        $item.CPU,
-                        1
-                    )
+                if (
+                    $item.CPU
+                ) {
+
+                    $cpu =
+                        [math]::Round(
+                            $item.CPU,
+                            1
+                        )
+                }
+
             }
             catch {
-
-                $cpu = 0
             }
-
-            $memory =
-                [math]::Round(
-                    $item.WorkingSet64 / 1MB,
-                    1
-                )
 
             $result +=
                 [PSCustomObject]@{
@@ -510,61 +814,77 @@ function Get-ProcessStatus {
                         $cpu
 
                     memoryMB =
-                        $memory
+                        [math]::Round(
+                            $item.WorkingSet64 /
+                            1MB,
+                            1
+                        )
                 }
         }
+
     }
     catch {
     }
 
-    return @($result)
+    return @(
+        $result
+    )
+
 }
 
+
 # ============================================================
-# WINDOWS EVENTS
+# EVENTS
 # ============================================================
 
 function Get-Events {
 
-    $result = @()
+    $result =
+        @()
 
     try {
 
-        $events =
+        $logs =
             Get-WinEvent `
-                -FilterHashtable @{
-                    LogName = "System"
-                    Level = 1,2,3
-                } `
-                -MaxEvents 40
+                -LogName System `
+                -MaxEvents 40 `
+                -ErrorAction Stop
 
-        foreach ($event in $events) {
+        foreach (
+            $item
+            in $logs
+        ) {
 
             $result +=
                 [PSCustomObject]@{
 
                     time =
-                        $event.TimeCreated.ToString("s")
+                        $item.TimeCreated
 
                     id =
-                        $event.Id
+                        $item.Id
 
                     provider =
-                        $event.ProviderName
+                        $item.ProviderName
 
                     level =
-                        $event.LevelDisplayName
+                        $item.LevelDisplayName
 
                     message =
-                        $event.Message
+                        $item.Message
                 }
         }
+
     }
     catch {
     }
 
-    return @($result)
+    return @(
+        $result
+    )
+
 }
+
 
 # ============================================================
 # DIAGNOSTICS
@@ -572,155 +892,126 @@ function Get-Events {
 
 function Run-Diagnostics {
 
-    $metrics =
-        Get-Metrics
+    $problems =
+        @()
 
-    $network =
-        Get-NetworkInfo
+    $health =
+        100
 
-    $services =
-        Get-ServiceStatus
+    try {
 
-    $problems = @()
-
-    if ($metrics.cpu -ge 90) {
-
-        $problems +=
-            [PSCustomObject]@{
-
-                title =
-                    "High CPU usage"
-
-                severity =
-                    "High"
-
-                description =
-                    "CPU usage is currently $($metrics.cpu)%."
-
-                recommendedFix =
-                    "Check processes using high CPU."
-            }
-    }
-
-    if ($metrics.ram -ge 90) {
-
-        $problems +=
-            [PSCustomObject]@{
-
-                title =
-                    "High memory usage"
-
-                severity =
-                    "High"
-
-                description =
-                    "RAM usage is currently $($metrics.ram)%."
-
-                recommendedFix =
-                    "Review running processes and memory usage."
-            }
-    }
-
-    if ($metrics.disk -ge 90) {
-
-        $problems +=
-            [PSCustomObject]@{
-
-                title =
-                    "Low disk space"
-
-                severity =
-                    "High"
-
-                description =
-                    "C: drive usage is $($metrics.disk)%."
-
-                recommendedFix =
-                    "Free disk space on drive C:."
-            }
-    }
-
-    if (-not $network.internet) {
-
-        $problems +=
-            [PSCustomObject]@{
-
-                title =
-                    "Internet connectivity problem"
-
-                severity =
-                    "Medium"
-
-                description =
-                    "The Agent could not reach the Internet."
-
-                recommendedFix =
-                    "Check network adapter, gateway and DNS."
-            }
-    }
-
-    foreach ($service in $services) {
+        $metrics =
+            Get-Metrics
 
         if (
-            $service.Name -in
-            @(
-                "Dhcp",
-                "Dnscache",
-                "EventLog",
-                "Winmgmt"
-            )
+            $metrics.cpu -ge 90
         ) {
 
-            if ($service.status -ne "Running") {
+            $health -=
+                20
 
-                $problems +=
-                    [PSCustomObject]@{
+            $problems +=
+                [PSCustomObject]@{
 
-                        title =
-                            "Service not running: $($service.displayName)"
+                    title =
+                        "High CPU Usage"
 
-                        severity =
-                            "Medium"
+                    severity =
+                        "HIGH"
 
-                        description =
-                            "$($service.Name) is $($service.status)."
+                    description =
+                        "CPU usage is above 90%."
 
-                        recommendedFix =
-                            "Review and restart the service if appropriate."
-                    }
-            }
+                    recommendedFix =
+                        "Review running processes."
+                }
         }
+
+        if (
+            $metrics.ram -ge 90
+        ) {
+
+            $health -=
+                20
+
+            $problems +=
+                [PSCustomObject]@{
+
+                    title =
+                        "High Memory Usage"
+
+                    severity =
+                        "HIGH"
+
+                    description =
+                        "RAM usage is above 90%."
+
+                    recommendedFix =
+                        "Review applications and memory usage."
+                }
+        }
+
+        if (
+            $metrics.disk -ge 90
+        ) {
+
+            $health -=
+                20
+
+            $problems +=
+                [PSCustomObject]@{
+
+                    title =
+                        "Low Disk Space"
+
+                    severity =
+                        "HIGH"
+
+                    description =
+                        "C: disk usage is above 90%."
+
+                    recommendedFix =
+                        "Clean temporary files and unnecessary data."
+                }
+        }
+
+        $network =
+            Get-NetworkInfo
+
+        if (
+            -not $network.internet
+        ) {
+
+            $health -=
+                25
+
+            $problems +=
+                [PSCustomObject]@{
+
+                    title =
+                        "Internet Connectivity"
+
+                    severity =
+                        "HIGH"
+
+                    description =
+                        "Internet connectivity test failed."
+
+                    recommendedFix =
+                        "Test DNS, renew IP, and check network adapter."
+                }
+        }
+
+    }
+    catch {
     }
 
-    $health = 100
+    if (
+        $health -lt 0
+    ) {
 
-    if ($metrics.cpu -ge 90) {
-        $health -= 25
-    }
-    elseif ($metrics.cpu -ge 75) {
-        $health -= 10
-    }
-
-    if ($metrics.ram -ge 90) {
-        $health -= 25
-    }
-    elseif ($metrics.ram -ge 75) {
-        $health -= 10
-    }
-
-    if ($metrics.disk -ge 90) {
-        $health -= 25
-    }
-    elseif ($metrics.disk -ge 80) {
-        $health -= 10
-    }
-
-    if (-not $network.internet) {
-        $health -= 20
-    }
-
-    if ($health -lt 0) {
-        $health = 0
+        $health =
+            0
     }
 
     return [PSCustomObject]@{
@@ -729,41 +1020,13 @@ function Run-Diagnostics {
             $health
 
         problems =
-            @($problems)
-    }
-}
-
-# ============================================================
-# JOB EVENT
-# ============================================================
-
-function Add-JobEvent {
-
-    param(
-        [string]$Action,
-        [string]$Message
-    )
-
-    if ($null -eq $global:CurrentJob) {
-        return
+            @(
+                $problems
+            )
     }
 
-    $event =
-        [PSCustomObject]@{
-
-            time =
-                (Get-Date).ToString("s")
-
-            action =
-                $Action
-
-            message =
-                $Message
-        }
-
-    $global:CurrentJob.events +=
-        $event
 }
+
 
 # ============================================================
 # START JOB
@@ -771,18 +1034,29 @@ function Add-JobEvent {
 
 function Start-NewJob {
 
-    if ($null -ne $global:CurrentJob) {
+    if (
+        $null -ne
+        $global:CurrentJob
+    ) {
 
         return @{
-            success = $false
-            message = "A job is already active."
-            job = $global:CurrentJob
+            success =
+                $false
+
+            message =
+                "A job is already active."
+
+            job =
+                $global:CurrentJob
         }
     }
 
     $jobId =
         "JOB-" +
-        (Get-Date -Format "yyyyMMdd-HHmmss")
+        (
+            Get-Date `
+                -Format "yyyyMMdd-HHmmss"
+        )
 
     $global:CurrentJob =
         [PSCustomObject]@{
@@ -797,7 +1071,9 @@ function Start-NewJob {
                 $env:USERNAME
 
             startedAt =
-                (Get-Date).ToString("s")
+                (
+                    Get-Date
+                ).ToString("s")
 
             endedAt =
                 $null
@@ -807,18 +1083,843 @@ function Start-NewJob {
 
             events =
                 @()
+
+            actions =
+                @()
         }
 
     Add-JobEvent `
         "job-start" `
         "Diagnostic job started."
 
+    Write-AgentInfo `
+        "Job started: $jobId"
+
     return @{
-        success = $true
-        job = $global:CurrentJob
-        message = "Job started successfully."
+        success =
+            $true
+
+        job =
+            $global:CurrentJob
+
+        message =
+            "Job started successfully."
     }
+
 }
+
+
+# ============================================================
+# V5.3 SAFE FIX ENGINE
+# ============================================================
+
+$global:FixCatalog =
+    @{
+
+        FLUSH_DNS =
+            @{
+                category =
+                    "NETWORK"
+
+                title =
+                    "Flush DNS"
+
+                admin =
+                    $false
+            }
+
+        RENEW_IP =
+            @{
+                category =
+                    "NETWORK"
+
+                title =
+                    "Renew IP"
+
+                admin =
+                    $true
+            }
+
+        RESET_WINSOCK =
+            @{
+                category =
+                    "NETWORK"
+
+                title =
+                    "Reset Winsock"
+
+                admin =
+                    $true
+            }
+
+        RESET_TCPIP =
+            @{
+                category =
+                    "NETWORK"
+
+                title =
+                    "Reset TCP/IP"
+
+                admin =
+                    $true
+            }
+
+        RESTART_ADAPTER =
+            @{
+                category =
+                    "NETWORK"
+
+                title =
+                    "Restart Network Adapter"
+
+                admin =
+                    $true
+            }
+
+        TEST_INTERNET =
+            @{
+                category =
+                    "NETWORK"
+
+                title =
+                    "Test Internet"
+
+                admin =
+                    $false
+            }
+
+        TEST_DNS =
+            @{
+                category =
+                    "NETWORK"
+
+                title =
+                    "Test DNS"
+
+                admin =
+                    $false
+            }
+
+        RESTART_EXPLORER =
+            @{
+                category =
+                    "WINDOWS"
+
+                title =
+                    "Restart Explorer"
+
+                admin =
+                    $false
+            }
+
+        CLEAR_USER_TEMP =
+            @{
+                category =
+                    "WINDOWS"
+
+                title =
+                    "Clear User Temp"
+
+                admin =
+                    $false
+            }
+
+        CLEAR_WINDOWS_TEMP =
+            @{
+                category =
+                    "WINDOWS"
+
+                title =
+                    "Clear Windows Temp"
+
+                admin =
+                    $true
+            }
+
+        RESTART_SPOOLER =
+            @{
+                category =
+                    "PRINTER"
+
+                title =
+                    "Restart Print Spooler"
+
+                admin =
+                    $true
+            }
+
+        CLEAR_PRINT_QUEUE =
+            @{
+                category =
+                    "PRINTER"
+
+                title =
+                    "Clear Print Queue"
+
+                admin =
+                    $true
+            }
+
+        RESTART_WUAUSERV =
+            @{
+                category =
+                    "WINDOWS UPDATE"
+
+                title =
+                    "Restart Windows Update"
+
+                admin =
+                    $true
+            }
+
+        RESET_WINDOWS_UPDATE =
+            @{
+                category =
+                    "WINDOWS UPDATE"
+
+                title =
+                    "Reset Windows Update Components"
+
+                admin =
+                    $true
+            }
+
+        CHECK_FIREWALL =
+            @{
+                category =
+                    "SECURITY"
+
+                title =
+                    "Check Windows Firewall"
+
+                admin =
+                    $false
+            }
+
+        SFC_SCAN =
+            @{
+                category =
+                    "WINDOWS"
+
+                title =
+                    "SFC Scan"
+
+                admin =
+                    $true
+            }
+
+        DISM_RESTOREHEALTH =
+            @{
+                category =
+                    "WINDOWS"
+
+                title =
+                    "DISM RestoreHealth"
+
+                admin =
+                    $true
+            }
+
+    }
+
+
+function Test-IsAdministrator {
+
+    try {
+
+        $identity =
+            [Security.Principal.WindowsIdentity]::GetCurrent()
+
+        $principal =
+            New-Object `
+                Security.Principal.WindowsPrincipal(
+                    $identity
+                )
+
+        return (
+            $principal.IsInRole(
+                [Security.Principal.WindowsBuiltInRole]::Administrator
+            )
+        )
+
+    }
+    catch {
+
+        return $false
+    }
+
+}
+
+
+function Add-FixActionLog {
+
+    param(
+        [string]$Action,
+        [string]$Category,
+        [string]$Result,
+        [string]$Message
+    )
+
+    if (
+        $null -eq
+        $global:CurrentJob
+    ) {
+
+        return
+    }
+
+    if (
+        $null -eq
+        $global:CurrentJob.actions
+    ) {
+
+        $global:CurrentJob |
+            Add-Member `
+                -MemberType NoteProperty `
+                -Name actions `
+                -Value @() `
+                -Force
+    }
+
+    $item =
+        [PSCustomObject]@{
+
+            time =
+                (
+                    Get-Date
+                ).ToString("s")
+
+            action =
+                $Action
+
+            category =
+                $Category
+
+            result =
+                $Result
+
+            message =
+                $Message
+        }
+
+    $global:CurrentJob.actions =
+        @(
+            $global:CurrentJob.actions
+        ) +
+        $item
+
+    Add-JobEvent `
+        "fix:$Action" `
+        "$Result - $Message"
+
+}
+
+
+function Invoke-FixAction {
+
+    param(
+        [string]$ActionId
+    )
+
+    if (
+        [string]::IsNullOrWhiteSpace(
+            $ActionId
+        )
+    ) {
+
+        return @{
+            success =
+                $false
+
+            message =
+                "Fix action is required."
+        }
+    }
+
+    $key =
+        $ActionId.ToUpperInvariant()
+
+    if (
+        -not $global:FixCatalog.ContainsKey(
+            $key
+        )
+    ) {
+
+        return @{
+            success =
+                $false
+
+            message =
+                "Fix action is not allowed."
+        }
+    }
+
+    if (
+        $null -eq
+        $global:CurrentJob
+    ) {
+
+        return @{
+            success =
+                $false
+
+            message =
+                "No active job."
+        }
+    }
+
+    $meta =
+        $global:FixCatalog[$key]
+
+    if (
+        $meta.admin -and
+        -not (
+            Test-IsAdministrator
+        )
+    ) {
+
+        $message =
+            "Administrator privileges are required for this action."
+
+        Add-FixActionLog `
+            $meta.title `
+            $meta.category `
+            "FAILED" `
+            $message
+
+        return @{
+            success =
+                $false
+
+            action =
+                $key
+
+            message =
+                $message
+        }
+    }
+
+    try {
+
+        $message =
+            ""
+
+        switch ($key) {
+
+            "FLUSH_DNS" {
+
+                Clear-DnsClientCache `
+                    -ErrorAction Stop
+
+                $message =
+                    "DNS cache flushed successfully."
+            }
+
+
+            "RENEW_IP" {
+
+                ipconfig /release |
+                    Out-Null
+
+                ipconfig /renew |
+                    Out-Null
+
+                $message =
+                    "IP lease released and renewed."
+            }
+
+
+            "RESET_WINSOCK" {
+
+                netsh winsock reset |
+                    Out-Null
+
+                $message =
+                    "Winsock reset completed. Restart may be required."
+            }
+
+
+            "RESET_TCPIP" {
+
+                netsh int ip reset |
+                    Out-Null
+
+                $message =
+                    "TCP/IP reset completed. Restart may be required."
+            }
+
+
+            "RESTART_ADAPTER" {
+
+                $adapter =
+                    Get-NetAdapter |
+                    Where-Object {
+                        $_.Status -eq "Up"
+                    } |
+                    Select-Object -First 1
+
+                if (
+                    -not $adapter
+                ) {
+
+                    throw `
+                        "No active network adapter was found."
+                }
+
+                Restart-NetAdapter `
+                    -Name $adapter.Name `
+                    -Confirm:$false `
+                    -ErrorAction Stop
+
+                $message =
+                    "Network adapter '$($adapter.Name)' restarted."
+            }
+
+
+            "TEST_INTERNET" {
+
+                $ok =
+                    Test-Connection `
+                        -ComputerName "1.1.1.1" `
+                        -Count 2 `
+                        -Quiet `
+                        -ErrorAction SilentlyContinue
+
+                if ($ok) {
+
+                    $message =
+                        "Internet connectivity test succeeded."
+
+                }
+                else {
+
+                    throw `
+                        "Internet connectivity test failed."
+                }
+            }
+
+
+            "TEST_DNS" {
+
+                Resolve-DnsName `
+                    -Name "example.com" `
+                    -ErrorAction Stop |
+                    Out-Null
+
+                $message =
+                    "DNS resolution succeeded for example.com."
+            }
+
+
+            "RESTART_EXPLORER" {
+
+                Get-Process `
+                    explorer `
+                    -ErrorAction SilentlyContinue |
+                    Stop-Process `
+                        -Force `
+                        -ErrorAction SilentlyContinue
+
+                Start-Process `
+                    explorer.exe
+
+                $message =
+                    "Windows Explorer restarted."
+            }
+
+
+            "CLEAR_USER_TEMP" {
+
+                $temp =
+                    [IO.Path]::GetTempPath()
+
+                Get-ChildItem `
+                    -LiteralPath $temp `
+                    -Force `
+                    -ErrorAction SilentlyContinue |
+                    Remove-Item `
+                        -Recurse `
+                        -Force `
+                        -ErrorAction SilentlyContinue
+
+                $message =
+                    "User Temp cleanup completed where files were removable."
+            }
+
+
+            "CLEAR_WINDOWS_TEMP" {
+
+                $temp =
+                    Join-Path `
+                        $env:WINDIR `
+                        "Temp"
+
+                Get-ChildItem `
+                    -LiteralPath $temp `
+                    -Force `
+                    -ErrorAction SilentlyContinue |
+                    Remove-Item `
+                        -Recurse `
+                        -Force `
+                        -ErrorAction SilentlyContinue
+
+                $message =
+                    "Windows Temp cleanup completed where files were removable."
+            }
+
+
+            "RESTART_SPOOLER" {
+
+                Restart-Service `
+                    -Name Spooler `
+                    -Force `
+                    -ErrorAction Stop
+
+                $message =
+                    "Print Spooler restarted."
+            }
+
+
+            "CLEAR_PRINT_QUEUE" {
+
+                Stop-Service `
+                    -Name Spooler `
+                    -Force `
+                    -ErrorAction Stop
+
+                $spool =
+                    Join-Path `
+                        $env:WINDIR `
+                        "System32\spool\PRINTERS"
+
+                Get-ChildItem `
+                    -LiteralPath $spool `
+                    -Force `
+                    -ErrorAction SilentlyContinue |
+                    Remove-Item `
+                        -Force `
+                        -ErrorAction SilentlyContinue
+
+                Start-Service `
+                    -Name Spooler `
+                    -ErrorAction Stop
+
+                $message =
+                    "Print queue cleared and Print Spooler restarted."
+            }
+
+
+            "RESTART_WUAUSERV" {
+
+                Restart-Service `
+                    -Name wuauserv `
+                    -Force `
+                    -ErrorAction Stop
+
+                $message =
+                    "Windows Update service restarted."
+            }
+
+
+            "RESET_WINDOWS_UPDATE" {
+
+                Stop-Service `
+                    -Name wuauserv `
+                    -Force `
+                    -ErrorAction SilentlyContinue
+
+                Stop-Service `
+                    -Name bits `
+                    -Force `
+                    -ErrorAction SilentlyContinue
+
+                Stop-Service `
+                    -Name cryptsvc `
+                    -Force `
+                    -ErrorAction SilentlyContinue
+
+                $sd =
+                    Join-Path `
+                        $env:WINDIR `
+                        "SoftwareDistribution"
+
+                $sdOld =
+                    Join-Path `
+                        $env:WINDIR `
+                        "SoftwareDistribution.V5Backup"
+
+                if (
+                    Test-Path $sdOld
+                ) {
+
+                    Remove-Item `
+                        $sdOld `
+                        -Recurse `
+                        -Force `
+                        -ErrorAction SilentlyContinue
+                }
+
+                if (
+                    Test-Path $sd
+                ) {
+
+                    Rename-Item `
+                        $sd `
+                        "SoftwareDistribution.V5Backup" `
+                        -ErrorAction SilentlyContinue
+                }
+
+                Start-Service `
+                    -Name cryptsvc `
+                    -ErrorAction SilentlyContinue
+
+                Start-Service `
+                    -Name bits `
+                    -ErrorAction SilentlyContinue
+
+                Start-Service `
+                    -Name wuauserv `
+                    -ErrorAction SilentlyContinue
+
+                $message =
+                    "Windows Update components were reset where possible."
+            }
+
+
+            "CHECK_FIREWALL" {
+
+                $profiles =
+                    Get-NetFirewallProfile |
+                    Select-Object `
+                        Name,
+                        Enabled
+
+                $message =
+                    (
+                        $profiles |
+                        ForEach-Object {
+
+                            "$($_.Name)=$($_.Enabled)"
+
+                        }
+                    ) -join ", "
+            }
+
+
+            "SFC_SCAN" {
+
+                $p =
+                    Start-Process `
+                        -FilePath `
+                            "$env:WINDIR\System32\sfc.exe" `
+                        -ArgumentList `
+                            "/scannow" `
+                        -Wait `
+                        -PassThru `
+                        -WindowStyle Hidden
+
+                if (
+                    $p.ExitCode -eq 0
+                ) {
+
+                    $message =
+                        "SFC scan completed successfully."
+
+                }
+                else {
+
+                    throw `
+                        "SFC completed with exit code $($p.ExitCode)."
+                }
+            }
+
+
+            "DISM_RESTOREHEALTH" {
+
+                $p =
+                    Start-Process `
+                        -FilePath `
+                            "$env:WINDIR\System32\DISM.exe" `
+                        -ArgumentList `
+                            "/Online",
+                            "/Cleanup-Image",
+                            "/RestoreHealth" `
+                        -Wait `
+                        -PassThru `
+                        -WindowStyle Hidden
+
+                if (
+                    $p.ExitCode -eq 0
+                ) {
+
+                    $message =
+                        "DISM RestoreHealth completed successfully."
+
+                }
+                else {
+
+                    throw `
+                        "DISM completed with exit code $($p.ExitCode)."
+                }
+            }
+
+        }
+
+        Add-FixActionLog `
+            $meta.title `
+            $meta.category `
+            "SUCCESS" `
+            $message
+
+        Write-AgentInfo `
+            "FIX SUCCESS: $($meta.title)"
+
+        return @{
+            success =
+                $true
+
+            action =
+                $key
+
+            category =
+                $meta.category
+
+            message =
+                $message
+        }
+
+    }
+    catch {
+
+        $message =
+            $_.Exception.Message
+
+        Add-FixActionLog `
+            $meta.title `
+            $meta.category `
+            "FAILED" `
+            $message
+
+        Write-AgentError `
+            "FIX FAILED: $($meta.title) - $message"
+
+        return @{
+            success =
+                $false
+
+            action =
+                $key
+
+            category =
+                $meta.category
+
+            message =
+                $message
+        }
+    }
+
+}
+
 
 # ============================================================
 # HTML ESCAPE
@@ -830,7 +1931,10 @@ function ConvertTo-HtmlSafe {
         [object]$Value
     )
 
-    if ($null -eq $Value) {
+    if (
+        $null -eq $Value
+    ) {
+
         return ""
     }
 
@@ -839,7 +1943,9 @@ function ConvertTo-HtmlSafe {
             [string]$Value
         )
     )
+
 }
+
 
 # ============================================================
 # REPORT
@@ -860,7 +1966,9 @@ function New-JobReport {
             Out-Null
 
         $safeId =
-            $Job.id -replace '[^a-zA-Z0-9\-_]', '_'
+            $Job.id `
+                -replace `
+                '[^a-zA-Z0-9\-_]', '_'
 
         $reportFile =
             Join-Path `
@@ -885,65 +1993,185 @@ function New-JobReport {
         $diagnostics =
             Run-Diagnostics
 
-        $problemRows = ""
 
-        foreach ($problem in $diagnostics.problems) {
+        $problemRows =
+            ""
+
+        foreach (
+            $problem
+            in $diagnostics.problems
+        ) {
 
             $problemRows +=
                 "<tr>" +
-                "<td>$(ConvertTo-HtmlSafe $problem.title)</td>" +
-                "<td>$(ConvertTo-HtmlSafe $problem.severity)</td>" +
-                "<td>$(ConvertTo-HtmlSafe $problem.description)</td>" +
-                "<td>$(ConvertTo-HtmlSafe $problem.recommendedFix)</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $problem.title
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $problem.severity
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $problem.description
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $problem.recommendedFix
+                )</td>" +
                 "</tr>"
         }
 
-        if ([string]::IsNullOrWhiteSpace($problemRows)) {
+        if (
+            [string]::IsNullOrWhiteSpace(
+                $problemRows
+            )
+        ) {
 
             $problemRows =
                 "<tr><td colspan='4'>No detected problems.</td></tr>"
         }
 
-        $serviceRows = ""
 
-        foreach ($service in $services) {
+        # ----------------------------------------------------
+        # FIX ACTION ROWS
+        # ----------------------------------------------------
+
+        $actionRows =
+            ""
+
+        foreach (
+            $action
+            in @(
+                $Job.actions
+            )
+        ) {
+
+            $actionRows +=
+                "<tr>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $action.time
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $action.category
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $action.action
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $action.result
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $action.message
+                )</td>" +
+                "</tr>"
+        }
+
+        if (
+            [string]::IsNullOrWhiteSpace(
+                $actionRows
+            )
+        ) {
+
+            $actionRows =
+                "<tr><td colspan='5'>No Fix Engine actions executed.</td></tr>"
+        }
+
+
+        $serviceRows =
+            ""
+
+        foreach (
+            $service
+            in $services
+        ) {
 
             $serviceRows +=
                 "<tr>" +
-                "<td>$(ConvertTo-HtmlSafe $service.name)</td>" +
-                "<td>$(ConvertTo-HtmlSafe $service.displayName)</td>" +
-                "<td>$(ConvertTo-HtmlSafe $service.status)</td>" +
-                "<td>$(ConvertTo-HtmlSafe $service.startType)</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $service.name
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $service.displayName
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $service.status
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $service.startType
+                )</td>" +
                 "</tr>"
         }
 
-        $eventRows = ""
 
-        foreach ($event in $events) {
+        $eventRows =
+            ""
+
+        foreach (
+            $event
+            in $events
+        ) {
 
             $eventRows +=
                 "<tr>" +
-                "<td>$(ConvertTo-HtmlSafe $event.time)</td>" +
-                "<td>$(ConvertTo-HtmlSafe $event.id)</td>" +
-                "<td>$(ConvertTo-HtmlSafe $event.provider)</td>" +
-                "<td>$(ConvertTo-HtmlSafe $event.level)</td>" +
-                "<td>$(ConvertTo-HtmlSafe $event.message)</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $event.time
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $event.id
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $event.provider
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $event.level
+                )</td>" +
+                "<td>$(
+                    ConvertTo-HtmlSafe `
+                        $event.message
+                )</td>" +
                 "</tr>"
         }
+
 
         $html = @"
 <!DOCTYPE html>
 <html>
+
 <head>
+
 <meta charset="UTF-8">
-<title>IT Diagnostic Report - $($Job.id)</title>
+
+<title>
+IT Diagnostic Report - $($Job.id)
+</title>
 
 <style>
 
 body {
-    font-family: Segoe UI, Arial, sans-serif;
+    font-family:
+        Segoe UI,
+        Arial,
+        sans-serif;
+
     margin: 30px;
+
     background: #f4f6f8;
+
     color: #17202a;
 }
 
@@ -952,205 +2180,439 @@ h1 {
 }
 
 .card {
+
     background: white;
-    border: 1px solid #d8dee4;
+
+    border:
+        1px solid
+        #d8dee4;
+
     border-radius: 10px;
+
     padding: 20px;
+
     margin-bottom: 20px;
 }
 
 .grid {
+
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+
+    grid-template-columns:
+        repeat(
+            4,
+            1fr
+        );
+
     gap: 12px;
 }
 
 .metric {
-    background: #eef2f5;
+
+    background:
+        #eef2f5;
+
     padding: 14px;
+
     border-radius: 8px;
 }
 
 .label {
-    color: #68737d;
+
+    color:
+        #68737d;
+
     font-size: 12px;
 }
 
 .value {
+
     font-size: 20px;
-    font-weight: bold;
+
+    font-weight:
+        bold;
+
     margin-top: 5px;
 }
 
 table {
+
     width: 100%;
-    border-collapse: collapse;
+
+    border-collapse:
+        collapse;
 }
 
 th,
 td {
-    border: 1px solid #d8dee4;
+
+    border:
+        1px solid
+        #d8dee4;
+
     padding: 8px;
+
     text-align: left;
-    vertical-align: top;
+
+    vertical-align:
+        top;
 }
 
 th {
-    background: #eef2f5;
+
+    background:
+        #eef2f5;
 }
 
 .ok {
-    color: green;
-    font-weight: bold;
+
+    color:
+        green;
+
+    font-weight:
+        bold;
 }
 
 </style>
+
 </head>
 
 <body>
 
-<h1>IT FIELD DIAGNOSTIC PORTAL V5</h1>
+
+<h1>
+IT FIELD DIAGNOSTIC PORTAL V5.3.1
+</h1>
+
 
 <p>
+
 Generated:
+
 $(Get-Date)
+
 </p>
 
+
 <div class="card">
 
-<h2>Job Information</h2>
+<h2>
+Job Information
+</h2>
 
 <div class="grid">
 
-<div class="metric">
-<div class="label">Job ID</div>
-<div class="value">$($Job.id)</div>
-</div>
 
 <div class="metric">
-<div class="label">Computer</div>
-<div class="value">$($Job.computer)</div>
+
+<div class="label">
+Job ID
 </div>
 
-<div class="metric">
-<div class="label">User</div>
-<div class="value">$($Job.user)</div>
-</div>
-
-<div class="metric">
-<div class="label">Started</div>
-<div class="value">$($Job.startedAt)</div>
-</div>
-
-<div class="metric">
-<div class="label">Ended</div>
-<div class="value">$($Job.endedAt)</div>
+<div class="value">
+$($Job.id)
 </div>
 
 </div>
+
+
+<div class="metric">
+
+<div class="label">
+Computer
 </div>
+
+<div class="value">
+$($Job.computer)
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+User
+</div>
+
+<div class="value">
+$($Job.user)
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+Started
+</div>
+
+<div class="value">
+$($Job.startedAt)
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+Ended
+</div>
+
+<div class="value">
+$($Job.endedAt)
+</div>
+
+</div>
+
+
+</div>
+
+</div>
+
 
 <div class="card">
 
-<h2>System Information</h2>
+<h2>
+System Information
+</h2>
 
 <div class="grid">
 
-<div class="metric">
-<div class="label">Computer</div>
-<div class="value">$($system.computer)</div>
-</div>
 
 <div class="metric">
-<div class="label">User</div>
-<div class="value">$($system.user)</div>
+
+<div class="label">
+Computer
 </div>
 
-<div class="metric">
-<div class="label">Manufacturer</div>
-<div class="value">$($system.manufacturer)</div>
-</div>
-
-<div class="metric">
-<div class="label">Model</div>
-<div class="value">$($system.model)</div>
-</div>
-
-<div class="metric">
-<div class="label">Windows</div>
-<div class="value">$($system.windows)</div>
-</div>
-
-<div class="metric">
-<div class="label">Build</div>
-<div class="value">$($system.build)</div>
-</div>
-
-<div class="metric">
-<div class="label">Architecture</div>
-<div class="value">$($system.architecture)</div>
-</div>
-
-<div class="metric">
-<div class="label">Memory</div>
-<div class="value">$($system.memoryGB) GB</div>
+<div class="value">
+$($system.computer)
 </div>
 
 </div>
+
+
+<div class="metric">
+
+<div class="label">
+User
 </div>
+
+<div class="value">
+$($system.user)
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+Manufacturer
+</div>
+
+<div class="value">
+$($system.manufacturer)
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+Model
+</div>
+
+<div class="value">
+$($system.model)
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+Windows
+</div>
+
+<div class="value">
+$($system.windows)
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+Build
+</div>
+
+<div class="value">
+$($system.build)
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+Architecture
+</div>
+
+<div class="value">
+$($system.architecture)
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+Memory
+</div>
+
+<div class="value">
+$($system.memoryGB) GB
+</div>
+
+</div>
+
+
+</div>
+
+</div>
+
 
 <div class="card">
 
-<h2>System Health</h2>
+<h2>
+System Health
+</h2>
 
 <div class="grid">
 
-<div class="metric">
-<div class="label">Health</div>
-<div class="value">$($diagnostics.health) / 100</div>
-</div>
 
 <div class="metric">
-<div class="label">CPU</div>
-<div class="value">$($metrics.cpu)%</div>
+
+<div class="label">
+Health
 </div>
 
-<div class="metric">
-<div class="label">RAM</div>
-<div class="value">$($metrics.ram)%</div>
-</div>
-
-<div class="metric">
-<div class="label">Disk C:</div>
-<div class="value">$($metrics.disk)%</div>
-</div>
-
-<div class="metric">
-<div class="label">Free RAM</div>
-<div class="value">$($metrics.ramFreeGB) GB</div>
-</div>
-
-<div class="metric">
-<div class="label">Free Disk</div>
-<div class="value">$($metrics.diskFreeGB) GB</div>
+<div class="value">
+$($diagnostics.health) / 100
 </div>
 
 </div>
+
+
+<div class="metric">
+
+<div class="label">
+CPU
 </div>
+
+<div class="value">
+$($metrics.cpu)%
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+RAM
+</div>
+
+<div class="value">
+$($metrics.ram)%
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+Disk C:
+</div>
+
+<div class="value">
+$($metrics.disk)%
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+Free RAM
+</div>
+
+<div class="value">
+$($metrics.ramFreeGB) GB
+</div>
+
+</div>
+
+
+<div class="metric">
+
+<div class="label">
+Free Disk
+</div>
+
+<div class="value">
+$($metrics.diskFreeGB) GB
+</div>
+
+</div>
+
+
+</div>
+
+</div>
+
 
 <div class="card">
 
-<h2>Diagnostics</h2>
+<h2>
+Diagnostics
+</h2>
 
 <table>
 
 <thead>
+
 <tr>
-<th>Problem</th>
-<th>Severity</th>
-<th>Description</th>
-<th>Recommended Fix</th>
+
+<th>
+Problem
+</th>
+
+<th>
+Severity
+</th>
+
+<th>
+Description
+</th>
+
+<th>
+Recommended Fix
+</th>
+
 </tr>
+
 </thead>
 
 <tbody>
@@ -1163,26 +2625,62 @@ $problemRows
 
 </div>
 
+
 <div class="card">
 
-<h2>Network</h2>
+<h2>
+Network
+</h2>
 
 <p>
+
 Internet:
+
 <strong>
-$(if ($network.internet) { "ONLINE" } else { "OFFLINE" })
+
+$(
+    if (
+        $network.internet
+    ) {
+
+        "ONLINE"
+
+    }
+    else {
+
+        "OFFLINE"
+    }
+)
+
 </strong>
+
 </p>
+
 
 <table>
 
 <thead>
+
 <tr>
-<th>Interface</th>
-<th>IPv4</th>
-<th>Gateway</th>
-<th>DNS</th>
+
+<th>
+Interface
+</th>
+
+<th>
+IPv4
+</th>
+
+<th>
+Gateway
+</th>
+
+<th>
+DNS
+</th>
+
 </tr>
+
 </thead>
 
 <tbody>
@@ -1193,11 +2691,28 @@ $(
         ForEach-Object {
 
             "<tr>" +
-            "<td>$($_.interface)</td>" +
-            "<td>$($_.ipv4)</td>" +
-            "<td>$($_.gateway)</td>" +
-            "<td>$($_.dns)</td>" +
+            "<td>$(
+                ConvertTo-HtmlSafe `
+                    $_.interface
+            )</td>" +
+
+            "<td>$(
+                ConvertTo-HtmlSafe `
+                    $_.ipv4
+            )</td>" +
+
+            "<td>$(
+                ConvertTo-HtmlSafe `
+                    $_.gateway
+            )</td>" +
+
+            "<td>$(
+                ConvertTo-HtmlSafe `
+                    $_.dns
+            )</td>" +
+
             "</tr>"
+
         }
     ) -join ""
 )
@@ -1208,19 +2723,84 @@ $(
 
 </div>
 
+
 <div class="card">
 
-<h2>Services</h2>
+<h2>
+Fix Action Log
+</h2>
 
 <table>
 
 <thead>
+
 <tr>
-<th>Name</th>
-<th>Display Name</th>
-<th>Status</th>
-<th>Start Type</th>
+
+<th>
+Time
+</th>
+
+<th>
+Category
+</th>
+
+<th>
+Action
+</th>
+
+<th>
+Result
+</th>
+
+<th>
+Message
+</th>
+
 </tr>
+
+</thead>
+
+<tbody>
+
+$actionRows
+
+</tbody>
+
+</table>
+
+</div>
+
+
+<div class="card">
+
+<h2>
+Services
+</h2>
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>
+Name
+</th>
+
+<th>
+Display Name
+</th>
+
+<th>
+Status
+</th>
+
+<th>
+Start Type
+</th>
+
+</tr>
+
 </thead>
 
 <tbody>
@@ -1233,20 +2813,41 @@ $serviceRows
 
 </div>
 
+
 <div class="card">
 
-<h2>Windows Events</h2>
+<h2>
+Windows Events
+</h2>
 
 <table>
 
 <thead>
+
 <tr>
-<th>Time</th>
-<th>ID</th>
-<th>Provider</th>
-<th>Level</th>
-<th>Message</th>
+
+<th>
+Time
+</th>
+
+<th>
+ID
+</th>
+
+<th>
+Provider
+</th>
+
+<th>
+Level
+</th>
+
+<th>
+Message
+</th>
+
 </tr>
+
 </thead>
 
 <tbody>
@@ -1259,45 +2860,13 @@ $eventRows
 
 </div>
 
-<div class="card">
-
-<h2>Job Activity</h2>
-
-<table>
-
-<thead>
-<tr>
-<th>Time</th>
-<th>Action</th>
-<th>Message</th>
-</tr>
-</thead>
-
-<tbody>
-
-$(
-    (
-        $Job.events |
-        ForEach-Object {
-
-            "<tr>" +
-            "<td>$($_.time)</td>" +
-            "<td>$($_.action)</td>" +
-            "<td>$($_.message)</td>" +
-            "</tr>"
-        }
-    ) -join ""
-)
-
-</tbody>
-
-</table>
-
-</div>
 
 </body>
+
 </html>
+
 "@
+
 
         Set-Content `
             -Path $reportFile `
@@ -1309,9 +2878,14 @@ $(
     }
     catch {
 
+        Write-AgentError `
+            $_.Exception.Message
+
         return $null
     }
+
 }
+
 
 # ============================================================
 # END JOB
@@ -1319,17 +2893,27 @@ $(
 
 function End-CurrentJob {
 
-    if ($null -eq $global:CurrentJob) {
+    if (
+        $null -eq
+        $global:CurrentJob
+    ) {
 
         return @{
-            success = $false
-            message = "No active job."
-            report = $null
+            success =
+                $false
+
+            message =
+                "No active job."
+
+            report =
+                $null
         }
     }
 
     $global:CurrentJob.endedAt =
-        (Get-Date).ToString("s")
+        (
+            Get-Date
+        ).ToString("s")
 
     $global:CurrentJob.status =
         "COMPLETED"
@@ -1353,13 +2937,25 @@ function End-CurrentJob {
     $global:CurrentJob =
         $null
 
+    Write-AgentInfo `
+        "Job ended: $($finished.id)"
+
     return @{
-        success = $true
-        job = $finished
-        report = $reportFile
-        message = "Job ended successfully."
+        success =
+            $true
+
+        job =
+            $finished
+
+        report =
+            $reportFile
+
+        message =
+            "Job ended successfully."
     }
+
 }
+
 
 # ============================================================
 # KILL PROCESS
@@ -1371,19 +2967,29 @@ function Stop-TargetProcess {
         [int]$ProcessId
     )
 
-    if ($ProcessId -eq 4) {
+    if (
+        $ProcessId -eq 4
+    ) {
 
         return @{
-            success = $false
-            message = "PID 4 is protected."
+            success =
+                $false
+
+            message =
+                "PID 4 is protected."
         }
     }
 
-    if ($ProcessId -le 0) {
+    if (
+        $ProcessId -le 0
+    ) {
 
         return @{
-            success = $false
-            message = "Invalid process ID."
+            success =
+                $false
+
+            message =
+                "Invalid process ID."
         }
     }
 
@@ -1418,7 +3024,9 @@ function Stop-TargetProcess {
         ) {
 
             return @{
-                success = $false
+                success =
+                    $false
+
                 message =
                     "Protected process cannot be terminated."
             }
@@ -1430,9 +3038,12 @@ function Stop-TargetProcess {
             -ErrorAction Stop
 
         return @{
-            success = $true
+            success =
+                $true
+
             message =
                 "Process terminated."
+
             pid =
                 $ProcessId
         }
@@ -1441,12 +3052,16 @@ function Stop-TargetProcess {
     catch {
 
         return @{
-            success = $false
+            success =
+                $false
+
             message =
                 $_.Exception.Message
         }
     }
+
 }
+
 
 # ============================================================
 # REPORT STATUS
@@ -1458,47 +3073,77 @@ function Get-ReportStatus {
         [string]$JobId
     )
 
-    if ([string]::IsNullOrWhiteSpace($JobId)) {
+    if (
+        [string]::IsNullOrWhiteSpace(
+            $JobId
+        )
+    ) {
 
         return @{
-            success = $false
-            ready = $false
-            message = "Job ID is required."
+            success =
+                $false
+
+            ready =
+                $false
+
+            message =
+                "Job ID is required."
         }
     }
 
     $safeId =
-        $JobId -replace '[^a-zA-Z0-9\-_]', '_'
+        $JobId `
+            -replace `
+            '[^a-zA-Z0-9\-_]', '_'
 
     $file =
         Join-Path `
             $ReportDir `
             "$safeId.html"
 
-    if (Test-Path -LiteralPath $file) {
+    if (
+        Test-Path $file
+    ) {
 
         return @{
-            success = $true
-            ready = $true
-            status = "ready"
-            path = $file
+            success =
+                $true
+
+            ready =
+                $true
+
+            status =
+                "ready"
+
+            path =
+                $file
         }
     }
 
     return @{
-        success = $true
-        ready = $false
-        status = "pending"
-        path = $file
+        success =
+            $true
+
+        ready =
+            $false
+
+        status =
+            "pending"
+
+        path =
+            $file
     }
+
 }
+
 
 # ============================================================
 # HTTP LISTENER
 # ============================================================
 
 $listener =
-    New-Object System.Net.HttpListener
+    New-Object `
+        System.Net.HttpListener
 
 try {
 
@@ -1512,99 +3157,49 @@ try {
 catch {
 
     Write-Host ""
-    Write-Host "Unable to start IT Diagnostic Agent." `
+    Write-Host `
+        "Unable to start IT Diagnostic Agent." `
         -ForegroundColor Red
 
-    Write-Host $_.Exception.Message `
+    Write-Host `
+        $_.Exception.Message `
         -ForegroundColor Red
 
-    Write-Host ""
+    Write-AgentError `
+        $_.Exception.Message
 
     exit 1
 }
 
+
 Write-Host ""
-Write-Host "IT Diagnostic Agent V5.1" `
+
+Write-Host `
+    "IT Diagnostic Agent V5.3.1" `
     -ForegroundColor Green
 
-Write-Host "Listening on $AgentUrl" `
+Write-Host `
+    "Listening on $AgentUrl" `
     -ForegroundColor Cyan
 
 Write-Host ""
 
+Write-AgentInfo `
+    "Agent started. PID=$PID URL=$AgentUrl"
+
+
 # ============================================================
-# REQUEST LOOP V5.2
+# REQUEST LOOP
 # ============================================================
-
-function Write-AgentError {
-
-    param(
-        [string]$Path,
-        [string]$Method,
-        [object]$Exception
-    )
-
-    try {
-
-        $logFile =
-            Join-Path `
-                $AgentDataDir `
-                "agent.log"
-
-        $line =
-            "{0} | {1} {2} | {3}" -f `
-                (Get-Date -Format "yyyy-MM-dd HH:mm:ss"),
-                $Method,
-                $Path,
-                $Exception.Exception.Message
-
-        Add-Content `
-            -Path $logFile `
-            -Value $line `
-            -Encoding UTF8
-
-    }
-    catch {
-    }
-}
-
-
-function Send-InternalError {
-
-    param(
-        $Context,
-        [string]$Message
-    )
-
-    try {
-
-        if ($null -eq $Context) {
-            return
-        }
-
-        Send-JsonResponse `
-            $Context `
-            @{
-                success = $false
-                message = $Message
-            } `
-            500
-
-    }
-    catch {
-    }
-}
-
 
 try {
 
-    while ($listener.IsListening) {
+    while (
+        $listener.IsListening
+    ) {
 
-        $context = $null
-
-        # ====================================================
-        # GET REQUEST
-        # ====================================================
+        $context =
+            $null
 
         try {
 
@@ -1614,80 +3209,72 @@ try {
         }
         catch {
 
-            if (-not $listener.IsListening) {
+            if (
+                -not $listener.IsListening
+            ) {
+
                 break
             }
 
-            Start-Sleep -Milliseconds 50
+            continue
+        }
+
+        if (
+            $null -eq $context
+        ) {
 
             continue
         }
 
+        $request =
+            $context.Request
 
-        if ($null -eq $context) {
-            continue
-        }
+        $path =
+            $request.Url.AbsolutePath
 
+        $method =
+            $request.HttpMethod
 
-        # ====================================================
-        # EVERYTHING FOR ONE REQUEST IS PROTECTED
-        # ====================================================
+        $response =
+            $context.Response
+
 
         try {
-
-            $request =
-                $context.Request
-
-            $path =
-                $request.Url.AbsolutePath
-
-            $method =
-                $request.HttpMethod
-
-            $response =
-                $context.Response
 
 
             # ------------------------------------------------
             # CORS
             # ------------------------------------------------
 
-            try {
+            $response.Headers.Add(
+                "Access-Control-Allow-Origin",
+                "*"
+            )
 
-                $response.Headers.Add(
-                    "Access-Control-Allow-Origin",
-                    "*"
-                )
+            $response.Headers.Add(
+                "Access-Control-Allow-Methods",
+                "GET,POST,OPTIONS"
+            )
 
-                $response.Headers.Add(
-                    "Access-Control-Allow-Methods",
-                    "GET,POST,OPTIONS"
-                )
-
-                $response.Headers.Add(
-                    "Access-Control-Allow-Headers",
-                    "Content-Type"
-                )
-
-            }
-            catch {
-            }
+            $response.Headers.Add(
+                "Access-Control-Allow-Headers",
+                "Content-Type"
+            )
 
 
             # ------------------------------------------------
             # OPTIONS
             # ------------------------------------------------
 
-            if ($method -eq "OPTIONS") {
+            if (
+                $method -eq
+                "OPTIONS"
+            ) {
 
-                try {
+                $response.StatusCode =
+                    204
 
-                    $response.StatusCode = 204
-                    $response.Close()
-
-                }
-                catch {
-                }
+                $response.Close()
 
                 continue
             }
@@ -1697,16 +3284,23 @@ try {
             # ROOT
             # ------------------------------------------------
 
-            if ($path -eq "/") {
+            if (
+                $path -eq
+                "/"
+            ) {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
+                        success =
+                            $true
+
                         agent =
-                            "IT Diagnostic Agent V5.2"
+                            "IT Diagnostic Agent V5.3.1"
+
                         version =
-                            "5.2"
+                            "5.3.1"
+
                         status =
                             "online"
                     }
@@ -1719,19 +3313,32 @@ try {
             # AGENT STATUS
             # ------------------------------------------------
 
-            if ($path -eq "/agent/status") {
+            if (
+                $path -eq
+                "/agent/status"
+            ) {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
-                        online = $true
-                        version = "5.2"
+                        success =
+                            $true
+
+                        online =
+                            $true
+
+                        version =
+                            "5.3.1"
+
                         agent =
-                            "IT Diagnostic Agent V5.2"
-                        pid = $PID
+                            "IT Diagnostic Agent V5.3.1"
+
+                        pid =
+                            $PID
+
                         computer =
                             $env:COMPUTERNAME
+
                         user =
                             $env:USERNAME
                     }
@@ -1744,12 +3351,17 @@ try {
             # SYSTEM
             # ------------------------------------------------
 
-            if ($path -eq "/system") {
+            if (
+                $path -eq
+                "/system"
+            ) {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
+                        success =
+                            $true
+
                         data =
                             Get-SystemInfo
                     }
@@ -1762,12 +3374,17 @@ try {
             # METRICS
             # ------------------------------------------------
 
-            if ($path -eq "/metrics") {
+            if (
+                $path -eq
+                "/metrics"
+            ) {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
+                        success =
+                            $true
+
                         data =
                             Get-Metrics
                     }
@@ -1780,12 +3397,17 @@ try {
             # NETWORK
             # ------------------------------------------------
 
-            if ($path -eq "/network") {
+            if (
+                $path -eq
+                "/network"
+            ) {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
+                        success =
+                            $true
+
                         data =
                             Get-NetworkInfo
                     }
@@ -1798,12 +3420,17 @@ try {
             # SERVICES
             # ------------------------------------------------
 
-            if ($path -eq "/services") {
+            if (
+                $path -eq
+                "/services"
+            ) {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
+                        success =
+                            $true
+
                         data =
                             Get-ServiceStatus
                     }
@@ -1816,12 +3443,17 @@ try {
             # PROCESSES
             # ------------------------------------------------
 
-            if ($path -eq "/processes") {
+            if (
+                $path -eq
+                "/processes"
+            ) {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
+                        success =
+                            $true
+
                         data =
                             Get-ProcessStatus
                     }
@@ -1834,12 +3466,17 @@ try {
             # EVENTS
             # ------------------------------------------------
 
-            if ($path -eq "/events") {
+            if (
+                $path -eq
+                "/events"
+            ) {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
+                        success =
+                            $true
+
                         data =
                             Get-Events
                     }
@@ -1852,15 +3489,70 @@ try {
             # DIAGNOSE
             # ------------------------------------------------
 
-            if ($path -eq "/diagnose") {
+            if (
+                $path -eq
+                "/diagnose"
+            ) {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
+                        success =
+                            $true
+
                         data =
                             Run-Diagnostics
                     }
+
+                continue
+            }
+
+
+            # ------------------------------------------------
+            # FIX ENGINE
+            # ------------------------------------------------
+
+            if (
+                $path -eq
+                "/fix" -and
+                $method -eq
+                "POST"
+            ) {
+
+                try {
+
+                    $data =
+                        Read-RequestBody `
+                            $request
+
+                    $actionId =
+                        [string]
+                        $data.action
+
+                    Send-JsonResponse `
+                        $context `
+                        (
+                            Invoke-FixAction `
+                                -ActionId $actionId
+                        )
+
+                }
+                catch {
+
+                    Write-AgentError `
+                        $_.Exception.Message
+
+                    Send-JsonResponse `
+                        $context `
+                        @{
+                            success =
+                                $false
+
+                            message =
+                                $_.Exception.Message
+                        } `
+                        500
+                }
 
                 continue
             }
@@ -1871,16 +3563,17 @@ try {
             # ------------------------------------------------
 
             if (
-                $path -eq "/job/start" -and
-                $method -eq "POST"
+                $path -eq
+                "/job/start" -and
+                $method -eq
+                "POST"
             ) {
-
-                $result =
-                    Start-NewJob
 
                 Send-JsonResponse `
                     $context `
-                    $result
+                    (
+                        Start-NewJob
+                    )
 
                 continue
             }
@@ -1890,14 +3583,23 @@ try {
             # JOB STATUS
             # ------------------------------------------------
 
-            if ($path -eq "/job/status") {
+            if (
+                $path -eq
+                "/job/status"
+            ) {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
+                        success =
+                            $true
+
                         active =
-                            ($null -ne $global:CurrentJob)
+                            (
+                                $null -ne
+                                $global:CurrentJob
+                            )
+
                         job =
                             $global:CurrentJob
                     }
@@ -1911,16 +3613,17 @@ try {
             # ------------------------------------------------
 
             if (
-                $path -eq "/job/end" -and
-                $method -eq "POST"
+                $path -eq
+                "/job/end" -and
+                $method -eq
+                "POST"
             ) {
-
-                $result =
-                    End-CurrentJob
 
                 Send-JsonResponse `
                     $context `
-                    $result
+                    (
+                        End-CurrentJob
+                    )
 
                 continue
             }
@@ -1930,14 +3633,21 @@ try {
             # HISTORY
             # ------------------------------------------------
 
-            if ($path -eq "/history") {
+            if (
+                $path -eq
+                "/history"
+            ) {
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
+                        success =
+                            $true
+
                         data =
-                            @($global:History)
+                            @(
+                                $global:History
+                            )
                     }
 
                 continue
@@ -1945,12 +3655,14 @@ try {
 
 
             # ------------------------------------------------
-            # KILL PROCESS
+            # KILL
             # ------------------------------------------------
 
             if (
-                $path -eq "/kill" -and
-                $method -eq "POST"
+                $path -eq
+                "/kill" -and
+                $method -eq
+                "POST"
             ) {
 
                 try {
@@ -1960,15 +3672,15 @@ try {
                             $request
 
                     $pidValue =
-                        [int]$data.pid
-
-                    $result =
-                        Stop-TargetProcess `
-                            -ProcessId $pidValue
+                        [int]
+                        $data.pid
 
                     Send-JsonResponse `
                         $context `
-                        $result
+                        (
+                            Stop-TargetProcess `
+                                -ProcessId $pidValue
+                        )
 
                 }
                 catch {
@@ -1976,11 +3688,12 @@ try {
                     Send-JsonResponse `
                         $context `
                         @{
-                            success = $false
+                            success =
+                                $false
+
                             message =
                                 $_.Exception.Message
-                        } `
-                        400
+                        }
                 }
 
                 continue
@@ -1991,18 +3704,22 @@ try {
             # REPORT STATUS
             # ------------------------------------------------
 
-            if ($path -eq "/report/status") {
+            if (
+                $path -eq
+                "/report/status"
+            ) {
 
                 $jobId =
-                    $request.QueryString["jobId"]
-
-                $result =
-                    Get-ReportStatus `
-                        -JobId $jobId
+                    $request.QueryString[
+                        "jobId"
+                    ]
 
                 Send-JsonResponse `
                     $context `
-                    $result
+                    (
+                        Get-ReportStatus `
+                            -JobId $jobId
+                    )
 
                 continue
             }
@@ -2012,27 +3729,36 @@ try {
             # REPORT OPEN
             # ------------------------------------------------
 
-            if ($path -eq "/report/open") {
+            if (
+                $path -eq
+                "/report/open"
+            ) {
 
                 $jobId =
-                    $request.QueryString["jobId"]
+                    $request.QueryString[
+                        "jobId"
+                    ]
 
                 $status =
                     Get-ReportStatus `
                         -JobId $jobId
 
-
-                if ($status.ready) {
+                if (
+                    $status.ready
+                ) {
 
                     try {
 
                         Start-Process `
-                            -FilePath $status.path
+                            -FilePath `
+                                $status.path
 
                         Send-JsonResponse `
                             $context `
                             @{
-                                success = $true
+                                success =
+                                    $true
+
                                 path =
                                     $status.path
                             }
@@ -2043,11 +3769,12 @@ try {
                         Send-JsonResponse `
                             $context `
                             @{
-                                success = $false
+                                success =
+                                    $false
+
                                 message =
                                     $_.Exception.Message
-                            } `
-                            500
+                            }
                     }
 
                 }
@@ -2056,8 +3783,12 @@ try {
                     Send-JsonResponse `
                         $context `
                         @{
-                            success = $false
-                            ready = $false
+                            success =
+                                $false
+
+                            ready =
+                                $false
+
                             message =
                                 "Report is not ready."
                         }
@@ -2071,94 +3802,52 @@ try {
             # AGENT STOP
             # ------------------------------------------------
             #
-            # IMPORTANT:
-            # Agent will ONLY stop here when:
+            # V5.3.1 FIX:
             #
-            # POST /agent/stop
+            # Do NOT launch another PowerShell process
+            # to kill this Agent PID.
             #
-            # is explicitly received.
+            # Instead:
             #
-            # Normal refresh requests can no longer fall
-            # through into this logic.
+            #   1. Send response to browser
+            #   2. Stop HttpListener
+            #   3. GetContext() exits
+            #   4. Request loop exits
+            #   5. finally block closes listener
+            #   6. PowerShell process exits normally
+            #
             # ------------------------------------------------
 
             if (
-                $path -eq "/agent/stop" -and
-                $method -eq "POST"
+                $path -eq
+                "/agent/stop" -and
+                $method -eq
+                "POST"
             ) {
 
-                $targetPid =
-                    $PID
+                Write-AgentInfo `
+                    "STOP AGENT requested. Stopping listener. PID=$PID"
 
                 Send-JsonResponse `
                     $context `
                     @{
-                        success = $true
+                        success =
+                            $true
+
                         message =
                             "Agent stopping."
                     }
 
+                try {
 
-                Start-Job -ScriptBlock {
+                    $listener.Stop()
 
-                    param(
-                        $ProcessId,
-                        $TempDirectory
-                    )
+                }
+                catch {
 
-
-                    Start-Sleep `
-                        -Milliseconds 800
-
-
-                    # ----------------------------------------
-                    # CLEAN TEMP
-                    # ----------------------------------------
-
-                    try {
-
-                        if (
-                            Test-Path `
-                                $TempDirectory
-                        ) {
-
-                            Remove-Item `
-                                -Path $TempDirectory `
-                                -Recurse `
-                                -Force `
-                                -ErrorAction SilentlyContinue
-                        }
-
-                    }
-                    catch {
-                    }
-
-
-                    Start-Sleep `
-                        -Milliseconds 300
-
-
-                    # ----------------------------------------
-                    # STOP AGENT
-                    # ----------------------------------------
-
-                    try {
-
-                        Stop-Process `
-                            -Id $ProcessId `
-                            -Force `
-                            -ErrorAction SilentlyContinue
-
-                    }
-                    catch {
-                    }
-
-                } `
-                -ArgumentList `
-                    $targetPid,
-                    $AgentTempDir |
-                Out-Null
-
+                    Write-AgentError `
+                        $_.Exception.Message
+                }
 
                 continue
             }
@@ -2171,78 +3860,51 @@ try {
             Send-JsonResponse `
                 $context `
                 @{
-                    success = $false
+                    success =
+                        $false
+
                     message =
                         "Endpoint not found."
+
                     path =
                         $path
                 } `
                 404
 
-
         }
         catch {
 
-            # =================================================
-            # CRITICAL FIX
-            #
-            # A single endpoint error MUST NOT kill Agent.
-            # =================================================
-
             Write-AgentError `
-                -Path $path `
-                -Method $method `
-                -Exception $_
-
+                $_.Exception.Message
 
             try {
 
-                Send-InternalError `
-                    -Context $context `
-                    -Message `
-                        ("Agent request error: " +
-                        $_.Exception.Message)
+                Send-JsonResponse `
+                    $context `
+                    @{
+                        success =
+                            $false
+
+                        message =
+                            "Internal Agent error."
+                    } `
+                    500
 
             }
             catch {
             }
-
-
-            # IMPORTANT
-            # Continue listening for next request.
-
-            continue
         }
-    }
 
-}
-catch {
-
-    # ========================================================
-    # MAIN LOOP SAFETY NET
-    # ========================================================
-
-    try {
-
-        Write-AgentError `
-            -Path "MAIN-LOOP" `
-            -Method "SYSTEM" `
-            -Exception $_
-
-    }
-    catch {
     }
 
 }
 finally {
 
-    # ========================================================
-    # CLEAN SHUTDOWN
-    # ========================================================
-
     try {
 
-        if ($listener.IsListening) {
+        if (
+            $listener.IsListening
+        ) {
 
             $listener.Stop()
         }
@@ -2251,7 +3913,6 @@ finally {
     catch {
     }
 
-
     try {
 
         $listener.Close()
@@ -2259,4 +3920,8 @@ finally {
     }
     catch {
     }
+
+    Write-AgentInfo `
+        "Agent stopped."
+
 }

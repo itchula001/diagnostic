@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 
@@ -9,7 +8,7 @@
 <meta name="viewport"
       content="width=device-width, initial-scale=1.0">
 
-<title>IT FIELD DIAGNOSTIC PORTAL V5.2.2</title>
+<title>IT FIELD DIAGNOSTIC PORTAL V5.3.0</title>
 
 <style>
 
@@ -366,42 +365,16 @@ tr:hover {
     display: block;
 }
 
-.health-good {
-    color: #4ade80;
-}
-
-.health-warning {
-    color: #facc15;
-}
-
-.health-bad {
-    color: #f87171;
-}
-
-.progress {
-    height: 7px;
-    background: #334155;
-    border-radius: 999px;
-    overflow: hidden;
-    margin-top: 8px;
-}
-
-.progress-bar {
-    height: 100%;
-    width: 0%;
-    background: #22c55e;
-    transition: width .3s;
-}
-
 .tabs {
     display: flex;
-    gap: 8px;
     flex-wrap: wrap;
-    margin-bottom: 16px;
+    gap: 8px;
+    margin-bottom: 18px;
 }
 
 .tab-button {
     background: #1e293b;
+    border: 1px solid #334155;
 }
 
 .tab-button.active {
@@ -433,6 +406,51 @@ tr:hover {
     font-weight: 700;
 }
 
+/* ============================================================
+   V5.3 FIX ENGINE
+   ============================================================ */
+
+.fix-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(280px, 1fr)
+        );
+    gap: 12px;
+}
+
+.fix-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 14px;
+}
+
+.fix-card h3 {
+    margin: 0 0 7px 0;
+    font-size: 15px;
+}
+
+.fix-meta {
+    color: #94a3b8;
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+}
+
+.fix-card button {
+    width: 100%;
+}
+
+.fix-success {
+    border-color: #166534;
+}
+
+.fix-failed {
+    border-color: #991b1b;
+}
+
 @media (max-width: 800px) {
 
     .container {
@@ -453,24 +471,21 @@ tr:hover {
 
 </head>
 
-
 <body>
-
 
 <header>
 
 <div>
 
 <div class="title">
-IT FIELD DIAGNOSTIC PORTAL V5.2.2
+IT FIELD DIAGNOSTIC PORTAL V5.3.0
 </div>
 
 <div class="subtitle">
-Technician Diagnostic & Repair Portal V5.2.2
+Technician Diagnostic & Repair Portal V5.3.0
 </div>
 
 </div>
-
 
 <div class="status">
 
@@ -517,7 +532,9 @@ Agent Offline
 <span
     id="refreshStatus"
     class="refresh-status">
-    Auto Refresh: ON · Last Updated: -
+
+Auto Refresh: ON · Last Updated: -
+
 </span>
 
 
@@ -812,7 +829,8 @@ Action Taken
 <div class="field">
 
 <label>
-Result</label>
+Result
+</label>
 
 <select id="actionResultInput">
 
@@ -840,7 +858,8 @@ Observation Only
 <div class="field">
 
 <label>
-Resolution</label>
+Resolution
+</label>
 
 <select id="resolutionInput">
 
@@ -864,7 +883,8 @@ Pending
 <div class="field">
 
 <label>
-Category</label>
+Category
+</label>
 
 <select id="actionCategoryInput">
 
@@ -928,6 +948,61 @@ Other
 
 <div class="empty">
 No actions recorded yet.
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- FIX CENTER -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+<h2>
+🛠 FIX CENTER
+</h2>
+
+<div
+    class="muted"
+    style="margin-bottom:14px;">
+
+Safe allowlisted Windows repair actions.
+Each action shows impact and admin requirement before execution.
+
+</div>
+
+<div
+    id="fixCenter"
+    class="fix-grid">
+
+<div class="empty">
+Start a Job to load Fix Center.
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- FIX ACTION HISTORY -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+<h2>
+🧾 FIX ACTION HISTORY
+</h2>
+
+<div
+    id="fixHistory"
+    class="action-list">
+
+<div class="empty">
+No fix actions executed.
 </div>
 
 </div>
@@ -1642,9 +1717,7 @@ Status
 
 </div>
 
-
 </div>
-
 
 </div>
 
@@ -1654,6 +1727,7 @@ Status
 
 // ============================================================
 // CONFIG
+// V5.3.0
 // ============================================================
 
 const AGENT =
@@ -1670,24 +1744,217 @@ let currentDiagnostics = null;
 let actionLog = [];
 
 let refreshInProgress = false;
+
 let lastRefreshAt = 0;
+
 let lastAgentOnline = false;
+
 let agentStatusFailures = 0;
+
 let statusCheckInProgress = false;
+
 let endJobRunning = false;
+
+let agentStopping = false;
+
+let fixRunning = false;
+
+
+// ============================================================
+// FIX CATALOG
+// ============================================================
+
+const FIX_ACTIONS = [
+
+    {
+        id: "FLUSH_DNS",
+        category: "NETWORK",
+        title: "Flush DNS",
+        impact: "Low",
+        admin: "No",
+        description:
+            "Clears the Windows DNS resolver cache."
+    },
+
+    {
+        id: "RENEW_IP",
+        category: "NETWORK",
+        title: "Renew IP",
+        impact: "Medium",
+        admin: "Yes",
+        description:
+            "Releases and renews the active IPv4 DHCP lease."
+    },
+
+    {
+        id: "RESET_WINSOCK",
+        category: "NETWORK",
+        title: "Reset Winsock",
+        impact: "Medium",
+        admin: "Yes",
+        description:
+            "Resets the Windows Winsock catalog. Restart may be required."
+    },
+
+    {
+        id: "RESET_TCPIP",
+        category: "NETWORK",
+        title: "Reset TCP/IP",
+        impact: "Medium",
+        admin: "Yes",
+        description:
+            "Resets Windows TCP/IP configuration."
+    },
+
+    {
+        id: "RESTART_ADAPTER",
+        category: "NETWORK",
+        title: "Restart Network Adapter",
+        impact: "Medium",
+        admin: "Yes",
+        description:
+            "Temporarily disables and re-enables the first active network adapter."
+    },
+
+    {
+        id: "TEST_INTERNET",
+        category: "NETWORK",
+        title: "Test Internet",
+        impact: "None",
+        admin: "No",
+        description:
+            "Tests connectivity to 1.1.1.1."
+    },
+
+    {
+        id: "TEST_DNS",
+        category: "NETWORK",
+        title: "Test DNS",
+        impact: "None",
+        admin: "No",
+        description:
+            "Tests DNS resolution for example.com."
+    },
+
+    {
+        id: "RESTART_EXPLORER",
+        category: "WINDOWS",
+        title: "Restart Explorer",
+        impact: "Low",
+        admin: "No",
+        description:
+            "Restarts Windows Explorer."
+    },
+
+    {
+        id: "CLEAR_USER_TEMP",
+        category: "WINDOWS",
+        title: "Clear User Temp",
+        impact: "Low",
+        admin: "No",
+        description:
+            "Removes files from the current user's Temp folder when possible."
+    },
+
+    {
+        id: "CLEAR_WINDOWS_TEMP",
+        category: "WINDOWS",
+        title: "Clear Windows Temp",
+        impact: "Medium",
+        admin: "Yes",
+        description:
+            "Removes files from the Windows Temp folder when possible."
+    },
+
+    {
+        id: "RESTART_SPOOLER",
+        category: "PRINTER",
+        title: "Restart Print Spooler",
+        impact: "Medium",
+        admin: "Yes",
+        description:
+            "Restarts the Windows Print Spooler service."
+    },
+
+    {
+        id: "CLEAR_PRINT_QUEUE",
+        category: "PRINTER",
+        title: "Clear Print Queue",
+        impact: "Medium",
+        admin: "Yes",
+        description:
+            "Stops Spooler, clears queued print jobs, then starts Spooler."
+    },
+
+    {
+        id: "RESTART_WUAUSERV",
+        category: "WINDOWS UPDATE",
+        title: "Restart Windows Update",
+        impact: "Medium",
+        admin: "Yes",
+        description:
+            "Restarts the Windows Update service."
+    },
+
+    {
+        id: "RESET_WINDOWS_UPDATE",
+        category: "WINDOWS UPDATE",
+        title: "Reset Windows Update Components",
+        impact: "High",
+        admin: "Yes",
+        description:
+            "Stops update services and rebuilds common Windows Update cache folders."
+    },
+
+    {
+        id: "CHECK_FIREWALL",
+        category: "SECURITY",
+        title: "Check Windows Firewall",
+        impact: "None",
+        admin: "No",
+        description:
+            "Reads the Windows Firewall profile state."
+    },
+
+    {
+        id: "SFC_SCAN",
+        category: "WINDOWS",
+        title: "SFC Scan",
+        impact: "High",
+        admin: "Yes",
+        description:
+            "Runs System File Checker. This may take several minutes."
+    },
+
+    {
+        id: "DISM_RESTOREHEALTH",
+        category: "WINDOWS",
+        title: "DISM RestoreHealth",
+        impact: "High",
+        admin: "Yes",
+        description:
+            "Repairs the Windows component store. This may take several minutes."
+    }
+
+];
 
 
 // ============================================================
 // API
 // ============================================================
 
-async function api(path, options = {}) {
+async function api(
+    path,
+    options = {}
+) {
 
     const controller =
         new AbortController();
 
     const timeoutMs =
-        Number.isFinite(options.timeoutMs)
+        Number.isFinite(
+            options.timeoutMs
+        )
             ? options.timeoutMs
             : 10000;
 
@@ -1696,6 +1963,9 @@ async function api(path, options = {}) {
     };
 
     delete requestOptions.timeoutMs;
+
+    requestOptions.signal =
+        controller.signal;
 
     const timeout =
         setTimeout(
@@ -1708,48 +1978,63 @@ async function api(path, options = {}) {
         const response =
             await fetch(
                 AGENT + path,
-                {
-                    ...requestOptions,
-                    cache: "no-store",
-                    signal: controller.signal,
-                    headers: {
-                        "Content-Type":
-                            "application/json",
-                        ...(requestOptions.headers || {})
-                    }
-                }
+                requestOptions
             );
 
+        const text =
+            await response.text();
+
+        let data = null;
+
+        try {
+            data =
+                text
+                    ? JSON.parse(text)
+                    : {};
+        }
+        catch {
+            data = {};
+        }
+
         if (!response.ok) {
+
             throw new Error(
+                data.message ||
                 "HTTP " +
                 response.status
             );
         }
 
-        return await response.json();
-
-    }
-    catch (error) {
-
-        if (
-            error.name ===
-            "AbortError"
-        ) {
-
-            throw new Error(
-                "Agent request timeout."
-            );
-        }
-
-        throw error;
+        return data;
 
     }
     finally {
 
-        clearTimeout(timeout);
+        clearTimeout(
+            timeout
+        );
 
     }
+
+}
+
+
+// ============================================================
+// SLEEP
+// ============================================================
+
+function sleep(
+    ms
+) {
+
+    return new Promise(
+        resolve =>
+            setTimeout(
+                resolve,
+                ms
+            )
+    );
+
 }
 
 
@@ -1757,83 +2042,162 @@ async function api(path, options = {}) {
 // NOTICE
 // ============================================================
 
+let noticeTimer = null;
+
 function showNotice(
     message,
     duration = 5000,
     type = "info"
 ) {
 
-    const box =
+    const element =
         document.getElementById(
             "notice"
         );
 
-    box.textContent =
+    if (!element) {
+        return;
+    }
+
+    if (noticeTimer) {
+
+        clearTimeout(
+            noticeTimer
+        );
+
+        noticeTimer =
+            null;
+    }
+
+    element.textContent =
         message;
 
-    box.className =
+    element.className =
         "notice show " +
         type;
 
-    if (duration > 0) {
+    if (
+        duration > 0
+    ) {
 
-        setTimeout(
-            () => {
+        noticeTimer =
+            setTimeout(
+                () => {
 
-                box.classList.remove(
-                    "show"
-                );
+                    element.classList.remove(
+                        "show"
+                    );
 
-            },
-            duration
-        );
-
+                },
+                duration
+            );
     }
+
 }
 
 
 // ============================================================
 // REFRESH STATUS
-// V5.2.3
 // ============================================================
 
-function setRefreshStatus(message) {
+function setRefreshStatus(
+    text
+) {
 
     const element =
         document.getElementById(
             "refreshStatus"
         );
 
-
-    if (!element) {
-
-        return;
-
+    if (element) {
+        element.textContent =
+            text;
     }
-
-
-    element.textContent =
-        message || "";
 
 }
 
 
 // ============================================================
-// AGENT STATUS
-// V5.2.3
+// WAIT FOR AGENT
+// ============================================================
+
+async function waitForAgent(
+    timeoutMs = 15000
+) {
+
+    const started =
+        Date.now();
+
+    while (
+        Date.now() -
+        started <
+        timeoutMs
+    ) {
+
+        try {
+
+            const data =
+                await api(
+                    "/agent/status",
+                    {
+                        timeoutMs: 2000
+                    }
+                );
+
+            if (
+                data &&
+                data.success &&
+                data.online
+            ) {
+
+                return true;
+            }
+
+        }
+        catch {
+        }
+
+        await sleep(
+            500
+        );
+    }
+
+    return false;
+
+}
+
+
+// ============================================================
+// CHECK AGENT
 // ============================================================
 
 async function checkAgent() {
 
-    if (statusCheckInProgress) {
+    if (endJobRunning) {
+
+        setRefreshStatus(
+            new Date().toLocaleTimeString() +
+            " · Ending Job / Generating Report..."
+        );
 
         return lastAgentOnline;
-
     }
 
+    if (agentStopping) {
+
+        setRefreshStatus(
+            new Date().toLocaleTimeString() +
+            " · Stopping Agent..."
+        );
+
+        return lastAgentOnline;
+    }
+
+    if (statusCheckInProgress) {
+        return lastAgentOnline;
+    }
 
     statusCheckInProgress = true;
-
 
     try {
 
@@ -1844,11 +2208,6 @@ async function checkAgent() {
                     timeoutMs: 5000
                 }
             );
-
-
-        // ========================================================
-        // AGENT ONLINE
-        // ========================================================
 
         if (
             data &&
@@ -1862,27 +2221,21 @@ async function checkAgent() {
             agentStatusFailures =
                 0;
 
-
             const statusDot =
                 document.getElementById(
                     "statusDot"
                 );
-
 
             const agentStatus =
                 document.getElementById(
                     "agentStatus"
                 );
 
-
             if (statusDot) {
-
                 statusDot.classList.add(
                     "online"
                 );
-
             }
-
 
             if (agentStatus) {
 
@@ -1890,30 +2243,19 @@ async function checkAgent() {
                     "Agent Online V" +
                     (
                         data.version ||
-                        "5.2"
+                        "5.3"
                     );
-
             }
 
-
             setRefreshStatus(
-                new Date()
-                    .toLocaleTimeString() +
+                new Date().toLocaleTimeString() +
                 " · Agent Online"
             );
 
-
             return true;
-
         }
 
-
-        // ========================================================
-        // AGENT REPLIED BUT OFFLINE
-        // ========================================================
-
         agentStatusFailures++;
-
 
         if (
             agentStatusFailures >= 2
@@ -1922,39 +2264,29 @@ async function checkAgent() {
             lastAgentOnline =
                 false;
 
-
             const statusDot =
                 document.getElementById(
                     "statusDot"
                 );
-
 
             const agentStatus =
                 document.getElementById(
                     "agentStatus"
                 );
 
-
             if (statusDot) {
-
                 statusDot.classList.remove(
                     "online"
                 );
-
             }
-
 
             if (agentStatus) {
-
                 agentStatus.textContent =
                     "Agent Offline";
-
             }
 
-
             setRefreshStatus(
-                new Date()
-                    .toLocaleTimeString() +
+                new Date().toLocaleTimeString() +
                 " · Agent Offline"
             );
 
@@ -1962,33 +2294,37 @@ async function checkAgent() {
         else {
 
             setRefreshStatus(
-                new Date()
-                    .toLocaleTimeString() +
+                new Date().toLocaleTimeString() +
                 " · Checking Agent..."
             );
-
         }
-
-
-        /*
-         * IMPORTANT:
-         *
-         * Do NOT call clearDashboardData().
-         *
-         * Existing Dashboard data stays visible.
-         */
 
         return lastAgentOnline;
 
     }
     catch (error) {
 
-        // ========================================================
-        // STATUS REQUEST ERROR / TIMEOUT
-        // ========================================================
+        if (endJobRunning) {
+
+            setRefreshStatus(
+                new Date().toLocaleTimeString() +
+                " · Ending Job / Generating Report..."
+            );
+
+            return lastAgentOnline;
+        }
+
+        if (agentStopping) {
+
+            setRefreshStatus(
+                new Date().toLocaleTimeString() +
+                " · Stopping Agent..."
+            );
+
+            return lastAgentOnline;
+        }
 
         agentStatusFailures++;
-
 
         if (
             agentStatusFailures >= 2
@@ -1997,39 +2333,29 @@ async function checkAgent() {
             lastAgentOnline =
                 false;
 
-
             const statusDot =
                 document.getElementById(
                     "statusDot"
                 );
-
 
             const agentStatus =
                 document.getElementById(
                     "agentStatus"
                 );
 
-
             if (statusDot) {
-
                 statusDot.classList.remove(
                     "online"
                 );
-
             }
-
 
             if (agentStatus) {
-
                 agentStatus.textContent =
                     "Agent Offline";
-
             }
 
-
             setRefreshStatus(
-                new Date()
-                    .toLocaleTimeString() +
+                new Date().toLocaleTimeString() +
                 " · Agent Offline"
             );
 
@@ -2037,19 +2363,10 @@ async function checkAgent() {
         else {
 
             setRefreshStatus(
-                new Date()
-                    .toLocaleTimeString() +
+                new Date().toLocaleTimeString() +
                 " · Checking Agent..."
             );
-
         }
-
-
-        /*
-         * IMPORTANT:
-         *
-         * Do NOT clear Dashboard data.
-         */
 
         return lastAgentOnline;
 
@@ -2065,85 +2382,46 @@ async function checkAgent() {
 
 
 // ============================================================
-// WAIT FOR AGENT
-// ============================================================
-
-// ============================================================
-// WAIT FOR AGENT
-// ============================================================
-
-async function waitForAgent(
-    timeout = 15000
-) {
-
-    const started =
-        Date.now();
-
-
-    while (
-        Date.now() - started <
-        timeout
-    ) {
-
-        if (
-            await checkAgent()
-        ) {
-
-            return true;
-
-        }
-
-
-        await sleep(400);
-
-    }
-
-
-    return false;
-}
-
-
-function sleep(ms) {
-
-    return new Promise(
-        resolve =>
-            setTimeout(
-                resolve,
-                ms
-            )
-    );
-}
-
-
-// ============================================================
 // START NEW JOB
 // ============================================================
 
 async function startNewJob() {
+
+    if (
+        currentJob
+    ) {
+
+        showNotice(
+            "A Job is already active.",
+            5000,
+            "error"
+        );
+
+        return;
+    }
 
     const button =
         document.getElementById(
             "startButton"
         );
 
-    button.disabled =
-        true;
-
+    if (button) {
+        button.disabled =
+            true;
+    }
 
     try {
 
         let online =
             await checkAgent();
 
-
         if (!online) {
 
             showNotice(
-                "Starting local diagnostic agent...",
+                "Starting local IT Diagnostic Agent...",
                 10000,
                 "info"
             );
-
 
             try {
 
@@ -2154,23 +2432,19 @@ async function startNewJob() {
             catch {
             }
 
-
             online =
                 await waitForAgent(
                     15000
                 );
-
 
             if (!online) {
 
                 throw new Error(
                     "Local agent did not start."
                 );
-
             }
 
         }
-
 
         const result =
             await api(
@@ -2180,7 +2454,6 @@ async function startNewJob() {
                 }
             );
 
-
         if (
             !result.success
         ) {
@@ -2189,9 +2462,7 @@ async function startNewJob() {
                 result.message ||
                 "Unable to start job."
             );
-
         }
-
 
         currentJob =
             result.job;
@@ -2205,9 +2476,7 @@ async function startNewJob() {
         currentDiagnostics =
             null;
 
-
         resetJobForm();
-
 
         document
             .getElementById(
@@ -2217,14 +2486,12 @@ async function startNewJob() {
                 "section-hidden"
             );
 
-
         document
             .getElementById(
                 "endButton"
             )
             .disabled =
                 false;
-
 
         document
             .getElementById(
@@ -2233,13 +2500,15 @@ async function startNewJob() {
             .disabled =
                 true;
 
-
         updateJobDisplay();
 
         renderActions();
 
-        updateSummary();
+        renderFixCenter();
 
+        renderFixHistory();
+
+        updateSummary();
 
         showNotice(
             "Job started: " +
@@ -2248,18 +2517,21 @@ async function startNewJob() {
             "success"
         );
 
-
         await refreshAll();
 
         startAutoRefresh();
-
 
     }
     catch (error) {
 
         showNotice(
-            "Unable to start job: " +
-            error.message,
+            "Unable to start Job: " +
+            (
+                error &&
+                error.message
+                    ? error.message
+                    : error
+            ),
             8000,
             "error"
         );
@@ -2267,8 +2539,10 @@ async function startNewJob() {
     }
     finally {
 
-        button.disabled =
-            false;
+        if (button) {
+            button.disabled =
+                false;
+        }
 
     }
 
@@ -2336,42 +2610,25 @@ function updateJobDisplay() {
         return;
     }
 
+    setText(
+        "jobId",
+        currentJob.id
+    );
 
-    document
-        .getElementById(
-            "jobId"
-        )
-        .textContent =
-            currentJob.id ||
-            "-";
+    setText(
+        "jobComputer",
+        currentJob.computer
+    );
 
+    setText(
+        "jobUser",
+        currentJob.user
+    );
 
-    document
-        .getElementById(
-            "jobComputer"
-        )
-        .textContent =
-            currentJob.computer ||
-            "-";
-
-
-    document
-        .getElementById(
-            "jobUser"
-        )
-        .textContent =
-            currentJob.user ||
-            "-";
-
-
-    document
-        .getElementById(
-            "jobStarted"
-        )
-        .textContent =
-            currentJob.startedAt ||
-            "-";
-
+    setText(
+        "jobStarted",
+        currentJob.startedAt
+    );
 
     document
         .getElementById(
@@ -2380,7 +2637,6 @@ function updateJobDisplay() {
         .value =
             currentJob.id ||
             "";
-
 
     document
         .getElementById(
@@ -2454,10 +2710,10 @@ function saveJobForm() {
         return;
     }
 
-
     localStorage.setItem(
         "ITDiagV5_Form_" +
         currentJob.id,
+
         JSON.stringify(
             getJobFormData()
         )
@@ -2472,24 +2728,22 @@ function loadJobForm() {
         return;
     }
 
-
     const raw =
         localStorage.getItem(
             "ITDiagV5_Form_" +
             currentJob.id
         );
 
-
     if (!raw) {
         return;
     }
 
-
     try {
 
         const data =
-            JSON.parse(raw);
-
+            JSON.parse(
+                raw
+            );
 
         document
             .getElementById(
@@ -2560,7 +2814,6 @@ function addAction() {
             .value
             .trim();
 
-
     if (!text) {
 
         showNotice(
@@ -2572,14 +2825,12 @@ function addAction() {
         return;
     }
 
-
     const result =
         document
             .getElementById(
                 "actionResultInput"
             )
             .value;
-
 
     const resolution =
         document
@@ -2588,14 +2839,12 @@ function addAction() {
             )
             .value;
 
-
     const category =
         document
             .getElementById(
                 "actionCategoryInput"
             )
             .value;
-
 
     actionLog.push({
 
@@ -2613,10 +2862,15 @@ function addAction() {
             resolution,
 
         category:
-            category
+            category,
+
+        source:
+            "MANUAL",
+
+        message:
+            text
 
     });
-
 
     document
         .getElementById(
@@ -2625,10 +2879,11 @@ function addAction() {
         .value =
             "";
 
-
     renderActions();
 
     updateSummary();
+
+    saveJobForm();
 
 }
 
@@ -2640,6 +2895,9 @@ function renderActions() {
             "actionList"
         );
 
+    if (!container) {
+        return;
+    }
 
     if (!actionLog.length) {
 
@@ -2653,10 +2911,8 @@ function renderActions() {
         return;
     }
 
-
     container.innerHTML =
         "";
-
 
     actionLog.forEach(
         (item, index) => {
@@ -2666,10 +2922,8 @@ function renderActions() {
                     "div"
                 );
 
-
             div.className =
                 "action-item";
-
 
             div.innerHTML =
                 `
@@ -2682,11 +2936,19 @@ function renderActions() {
                     )}
                     </strong>
 
-                    <span class="badge badge-blue">
+                    <span class="badge ${
+                        item.result === "SUCCESS"
+                            ? "badge-green"
+                            : item.result === "FAILED"
+                                ? "badge-red"
+                                : "badge-blue"
+                    }">
+
                     ${escapeHtml(
                         item.result ||
                         ""
                     )}
+
                     </span>
 
                 </div>
@@ -2700,31 +2962,15 @@ function renderActions() {
 
                 <div
                     class="muted"
-                    style="margin-top:7px;">
+                    style="margin-top:8px;">
 
                     ${escapeHtml(
                         item.time ||
                         ""
                     )}
 
-                    · Resolution:
-                    ${escapeHtml(
-                        item.resolution ||
-                        ""
-                    )}
-
-                    <button
-                        class="danger small-button"
-                        style="float:right;"
-                        onclick="removeAction(${index})">
-
-                        Remove
-
-                    </button>
-
                 </div>
                 `;
-
 
             container.appendChild(
                 div
@@ -2736,19 +2982,9 @@ function renderActions() {
 }
 
 
-function removeAction(index) {
-
-    actionLog.splice(
-        index,
-        1
-    );
-
-    renderActions();
-
-    updateSummary();
-
-}
-
+// ============================================================
+// SUMMARY
+// ============================================================
 
 function updateSummary() {
 
@@ -2757,35 +2993,36 @@ function updateSummary() {
         actionLog.length
     );
 
-
-    const resolved =
-        actionLog.filter(
-            item =>
-                item.resolution ===
-                "RESOLVED"
-        ).length;
-
-
     setText(
         "summaryResolved",
-        resolved
+        actionLog.filter(
+            item =>
+                item.result === "SUCCESS" ||
+                item.resolution === "RESOLVED"
+        ).length
     );
 
-
-    const problems =
+    if (
         currentDiagnostics &&
         Array.isArray(
             currentDiagnostics.problems
         )
-            ? currentDiagnostics.problems.length
-            : 0;
+    ) {
 
+        setText(
+            "summaryProblems",
+            currentDiagnostics.problems.length
+        );
 
-    setText(
-        "summaryProblems",
-        problems
-    );
+    }
+    else {
 
+        setText(
+            "summaryProblems",
+            0
+        );
+
+    }
 
     if (
         currentDiagnostics
@@ -2793,10 +3030,69 @@ function updateSummary() {
 
         setText(
             "summaryHealth",
-            currentDiagnostics.health ||
-            "-"
+            currentDiagnostics.health
         );
 
+    }
+
+}
+
+
+// ============================================================
+// SAVE / LOAD ACTION LOG
+// ============================================================
+
+function saveActionLog() {
+
+    if (!currentJob) {
+        return;
+    }
+
+    localStorage.setItem(
+        "ITDiagV5_Actions_" +
+        currentJob.id,
+
+        JSON.stringify(
+            actionLog
+        )
+    );
+
+}
+
+
+function loadActionLog() {
+
+    if (!currentJob) {
+        return;
+    }
+
+    const raw =
+        localStorage.getItem(
+            "ITDiagV5_Actions_" +
+            currentJob.id
+        );
+
+    if (!raw) {
+        return;
+    }
+
+    try {
+
+        const data =
+            JSON.parse(
+                raw
+            );
+
+        if (
+            Array.isArray(data)
+        ) {
+
+            actionLog =
+                data;
+        }
+
+    }
+    catch {
     }
 
 }
@@ -2815,11 +3111,9 @@ async function refreshSystem() {
                 "/system"
             );
 
-
         const data =
             result.data ||
-            result;
-
+            {};
 
         setText(
             "systemComputer",
@@ -2858,31 +3152,15 @@ async function refreshSystem() {
 
         setText(
             "systemMemory",
-            data.memoryGB ?
-                data.memoryGB + " GB" :
-                "-"
+            data.memoryGB
+                ? data.memoryGB + " GB"
+                : "-"
         );
 
         setText(
             "systemSerial",
             data.serial
         );
-
-
-        if (
-            currentJob
-        ) {
-
-            document
-                .getElementById(
-                    "jobComputerInput"
-                )
-                .value =
-                    data.computer ||
-                    currentJob.computer ||
-                    "";
-
-        }
 
     }
     catch {
@@ -2904,11 +3182,9 @@ async function refreshMetrics() {
                 "/metrics"
             );
 
-
         const data =
             result.data ||
-            result;
-
+            {};
 
         setText(
             "cpu",
@@ -2917,14 +3193,12 @@ async function refreshMetrics() {
                 : "-"
         );
 
-
         setText(
             "ram",
             data.ram !== undefined
                 ? data.ram + "%"
                 : "-"
         );
-
 
         setText(
             "ramFree",
@@ -2933,7 +3207,6 @@ async function refreshMetrics() {
                 : "-"
         );
 
-
         setText(
             "disk",
             data.disk !== undefined
@@ -2941,343 +3214,12 @@ async function refreshMetrics() {
                 : "-"
         );
 
-
         setText(
             "diskFree",
             data.diskFreeGB !== undefined
                 ? data.diskFreeGB + " GB"
                 : "-"
         );
-
-    }
-    catch {
-    }
-
-}
-
-
-// ============================================================
-// NETWORK
-// ============================================================
-
-async function refreshNetwork() {
-
-    try {
-
-        const result =
-            await api(
-                "/network"
-            );
-
-
-        const data =
-            result.data ||
-            result;
-
-
-        setText(
-            "networkStatus",
-            data.internet === true
-                ? "Internet: ONLINE"
-                : data.internet === false
-                    ? "Internet: OFFLINE"
-                    : "-"
-        );
-
-
-        const table =
-            document.getElementById(
-                "networkTable"
-            );
-
-
-        table.innerHTML =
-            "";
-
-
-        const adapters =
-            Array.isArray(
-                data.adapters
-            )
-                ? data.adapters
-                : [];
-
-
-        for (
-            const item
-            of adapters
-        ) {
-
-            const row =
-                document.createElement(
-                    "tr"
-                );
-
-
-            row.innerHTML =
-                `
-                <td>
-                ${escapeHtml(
-                    item.interface ||
-                    ""
-                )}
-                </td>
-
-                <td>
-                ${escapeHtml(
-                    item.ipv4 ||
-                    ""
-                )}
-                </td>
-
-                <td>
-                ${escapeHtml(
-                    item.gateway ||
-                    ""
-                )}
-                </td>
-
-                <td>
-                ${escapeHtml(
-                    item.dns ||
-                    ""
-                )}
-                </td>
-                `;
-
-
-            table.appendChild(
-                row
-            );
-
-        }
-
-
-        if (
-            !adapters.length
-        ) {
-
-            table.innerHTML =
-                `
-                <tr>
-                    <td
-                        colspan="4"
-                        class="empty">
-
-                        No network adapter data.
-
-                    </td>
-                </tr>
-                `;
-
-        }
-
-    }
-    catch {
-    }
-
-}
-
-
-// ============================================================
-// SERVICES
-// ============================================================
-
-async function refreshServices() {
-
-    try {
-
-        const result =
-            await api(
-                "/services"
-            );
-
-
-        const items =
-            Array.isArray(
-                result.data
-            )
-                ? result.data
-                : [];
-
-
-        const table =
-            document.getElementById(
-                "servicesTable"
-            );
-
-
-        table.innerHTML =
-            "";
-
-
-        for (
-            const item
-            of items
-        ) {
-
-            const row =
-                document.createElement(
-                    "tr"
-                );
-
-
-            row.innerHTML =
-                `
-                <td>
-                ${escapeHtml(
-                    item.name ||
-                    ""
-                )}
-                </td>
-
-                <td>
-                ${escapeHtml(
-                    item.displayName ||
-                    ""
-                )}
-                </td>
-
-                <td>
-                ${escapeHtml(
-                    item.status ||
-                    ""
-                )}
-                </td>
-
-                <td>
-                ${escapeHtml(
-                    item.startType ||
-                    ""
-                )}
-                </td>
-                `;
-
-
-            table.appendChild(
-                row
-            );
-
-        }
-
-
-        if (
-            !items.length
-        ) {
-
-            table.innerHTML =
-                `
-                <tr>
-                    <td
-                        colspan="4"
-                        class="empty">
-
-                        No service data.
-
-                    </td>
-                </tr>
-                `;
-
-        }
-
-    }
-    catch {
-    }
-
-}
-
-
-// ============================================================
-// PROCESSES
-// ============================================================
-
-async function refreshProcesses() {
-
-    try {
-
-        const result =
-            await api(
-                "/processes"
-            );
-
-
-        const items =
-            Array.isArray(
-                result.data
-            )
-                ? result.data
-                : [];
-
-
-        const table =
-            document.getElementById(
-                "processesTable"
-            );
-
-
-        table.innerHTML =
-            "";
-
-
-        for (
-            const item
-            of items
-        ) {
-
-            const row =
-                document.createElement(
-                    "tr"
-                );
-
-
-            row.innerHTML =
-                `
-                <td>
-                ${item.id ?? ""}
-                </td>
-
-                <td>
-                ${escapeHtml(
-                    item.name ||
-                    ""
-                )}
-                </td>
-
-                <td>
-                ${item.cpu ?? ""}
-                </td>
-
-                <td>
-                ${item.memoryMB ?? ""}
-                </td>
-                `;
-
-
-            table.appendChild(
-                row
-            );
-
-        }
-
-
-        if (
-            !items.length
-        ) {
-
-            table.innerHTML =
-                `
-                <tr>
-                    <td
-                        colspan="4"
-                        class="empty">
-
-                        No process data.
-
-                    </td>
-                </tr>
-                `;
-
-        }
 
     }
     catch {
@@ -3299,78 +3241,21 @@ async function refreshDiagnostics() {
                 "/diagnose"
             );
 
-
         const data =
             result.data ||
-            result;
-
+            {};
 
         currentDiagnostics =
             data;
-
-
-        updateSummary();
-
 
         const container =
             document.getElementById(
                 "diagnostics"
             );
 
-
-        const problems =
-            Array.isArray(
-                data.problems
-            )
-                ? data.problems
-                : [];
-
-
-        let healthClass =
-            "health-good";
-
-
-        if (
-            String(
-                data.health ||
-                ""
-            )
-            .toLowerCase()
-            .includes(
-                "warning"
-            )
-        ) {
-
-            healthClass =
-                "health-warning";
-
+        if (!container) {
+            return;
         }
-
-
-        if (
-            String(
-                data.health ||
-                ""
-            )
-            .toLowerCase()
-            .includes(
-                "bad"
-            ) ||
-            String(
-                data.health ||
-                ""
-            )
-            .toLowerCase()
-            .includes(
-                "critical"
-            )
-        ) {
-
-            healthClass =
-                "health-bad";
-
-        }
-
 
         container.innerHTML =
             `
@@ -3380,19 +3265,22 @@ async function refreshDiagnostics() {
                 Health
                 </div>
 
-                <div
-                    class="summary-value ${healthClass}">
-
-                    ${escapeHtml(
-                        data.health ||
-                        "-"
-                    )}
-
+                <div class="summary-value">
+                ${escapeHtml(
+                    data.health ||
+                    "-"
+                )}
                 </div>
 
             </div>
             `;
 
+        const problems =
+            Array.isArray(
+                data.problems
+            )
+                ? data.problems
+                : [];
 
         if (
             problems.length
@@ -3406,10 +3294,8 @@ async function refreshDiagnostics() {
                             "div"
                         );
 
-
                     div.className =
                         "action-item";
-
 
                     div.innerHTML =
                         `
@@ -3455,7 +3341,6 @@ async function refreshDiagnostics() {
                         </div>
                         `;
 
-
                     container.appendChild(
                         div
                     );
@@ -3473,6 +3358,331 @@ async function refreshDiagnostics() {
                 </div>
                 `;
 
+        }
+
+        updateSummary();
+
+    }
+    catch {
+    }
+
+}
+
+
+// ============================================================
+// NETWORK
+// ============================================================
+
+async function refreshNetwork() {
+
+    try {
+
+        const result =
+            await api(
+                "/network"
+            );
+
+        const data =
+            result.data ||
+            {};
+
+        const status =
+            document.getElementById(
+                "networkStatus"
+            );
+
+        if (status) {
+
+            status.textContent =
+                data.internet
+                    ? "Internet: ONLINE"
+                    : "Internet: OFFLINE";
+        }
+
+        const table =
+            document.getElementById(
+                "networkTable"
+            );
+
+        if (!table) {
+            return;
+        }
+
+        table.innerHTML =
+            "";
+
+        const adapters =
+            Array.isArray(
+                data.adapters
+            )
+                ? data.adapters
+                : [];
+
+        adapters.forEach(
+            item => {
+
+                const row =
+                    document.createElement(
+                        "tr"
+                    );
+
+                row.innerHTML =
+                    `
+                    <td>
+                    ${escapeHtml(
+                        item.interface ||
+                        ""
+                    )}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.ipv4 ||
+                        ""
+                    )}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.gateway ||
+                        ""
+                    )}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.dns ||
+                        ""
+                    )}
+                    </td>
+                    `;
+
+                table.appendChild(
+                    row
+                );
+
+            }
+        );
+
+        if (
+            !adapters.length
+        ) {
+
+            table.innerHTML =
+                `
+                <tr>
+                    <td
+                        colspan="4"
+                        class="empty">
+
+                        No network adapters.
+
+                    </td>
+                </tr>
+                `;
+        }
+
+    }
+    catch {
+    }
+
+}
+
+
+// ============================================================
+// SERVICES
+// ============================================================
+
+async function refreshServices() {
+
+    try {
+
+        const result =
+            await api(
+                "/services"
+            );
+
+        const table =
+            document.getElementById(
+                "servicesTable"
+            );
+
+        if (!table) {
+            return;
+        }
+
+        table.innerHTML =
+            "";
+
+        const items =
+            Array.isArray(
+                result.data
+            )
+                ? result.data
+                : [];
+
+        items.forEach(
+            item => {
+
+                const row =
+                    document.createElement(
+                        "tr"
+                    );
+
+                row.innerHTML =
+                    `
+                    <td>
+                    ${escapeHtml(
+                        item.name ||
+                        ""
+                    )}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.displayName ||
+                        ""
+                    )}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.status ||
+                        ""
+                    )}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.startType ||
+                        ""
+                    )}
+                    </td>
+                    `;
+
+                table.appendChild(
+                    row
+                );
+
+            }
+        );
+
+        if (
+            !items.length
+        ) {
+
+            table.innerHTML =
+                `
+                <tr>
+                    <td
+                        colspan="4"
+                        class="empty">
+
+                        No service data.
+
+                    </td>
+                </tr>
+                `;
+        }
+
+    }
+    catch {
+    }
+
+}
+
+
+// ============================================================
+// PROCESSES
+// ============================================================
+
+async function refreshProcesses() {
+
+    try {
+
+        const result =
+            await api(
+                "/processes"
+            );
+
+        const table =
+            document.getElementById(
+                "processesTable"
+            );
+
+        if (!table) {
+            return;
+        }
+
+        table.innerHTML =
+            "";
+
+        const items =
+            Array.isArray(
+                result.data
+            )
+                ? result.data
+                : [];
+
+        items.forEach(
+            item => {
+
+                const row =
+                    document.createElement(
+                        "tr"
+                    );
+
+                row.innerHTML =
+                    `
+                    <td>
+                    ${item.id ?? ""}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.name ||
+                        ""
+                    )}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.cpu ||
+                        ""
+                    )}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.memoryMB ||
+                        ""
+                    )}
+                    </td>
+                    `;
+
+                table.appendChild(
+                    row
+                );
+
+            }
+        );
+
+        if (
+            !items.length
+        ) {
+
+            table.innerHTML =
+                `
+                <tr>
+                    <td
+                        colspan="4"
+                        class="empty">
+
+                        No process data.
+
+                    </td>
+                </tr>
+                `;
         }
 
     }
@@ -3495,16 +3705,17 @@ async function refreshEvents() {
                 "/events"
             );
 
-
         const table =
             document.getElementById(
                 "eventsTable"
             );
 
+        if (!table) {
+            return;
+        }
 
         table.innerHTML =
             "";
-
 
         const items =
             Array.isArray(
@@ -3513,60 +3724,55 @@ async function refreshEvents() {
                 ? result.data
                 : [];
 
+        items.forEach(
+            item => {
 
-        for (
-            const item
-            of items
-        ) {
+                const row =
+                    document.createElement(
+                        "tr"
+                    );
 
-            const row =
-                document.createElement(
-                    "tr"
+                row.innerHTML =
+                    `
+                    <td>
+                    ${escapeHtml(
+                        item.time ||
+                        ""
+                    )}
+                    </td>
+
+                    <td>
+                    ${item.id ?? ""}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.provider ||
+                        ""
+                    )}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.level ||
+                        ""
+                    )}
+                    </td>
+
+                    <td>
+                    ${escapeHtml(
+                        item.message ||
+                        ""
+                    )}
+                    </td>
+                    `;
+
+                table.appendChild(
+                    row
                 );
 
-
-            row.innerHTML =
-                `
-                <td>
-                ${escapeHtml(
-                    item.time ||
-                    ""
-                )}
-                </td>
-
-                <td>
-                ${item.id ?? ""}
-                </td>
-
-                <td>
-                ${escapeHtml(
-                    item.provider ||
-                    ""
-                )}
-                </td>
-
-                <td>
-                ${escapeHtml(
-                    item.level ||
-                    ""
-                )}
-                </td>
-
-                <td>
-                ${escapeHtml(
-                    item.message ||
-                    ""
-                )}
-                </td>
-                `;
-
-
-            table.appendChild(
-                row
-            );
-
-        }
-
+            }
+        );
 
         if (
             !items.length
@@ -3584,7 +3790,6 @@ async function refreshEvents() {
                     </td>
                 </tr>
                 `;
-
         }
 
     }
@@ -3605,25 +3810,15 @@ async function refreshAll() {
     ) {
 
         return false;
-
     }
-
 
     refreshInProgress =
         true;
 
-
     try {
-
-        /*
-         * IMPORTANT:
-         * Every Auto Refresh cycle checks
-         * the real Agent status.
-         */
 
         const online =
             await checkAgent();
-
 
         if (!online) {
 
@@ -3634,9 +3829,7 @@ async function refreshAll() {
             );
 
             return false;
-
         }
-
 
         if (
             currentJob
@@ -3659,24 +3852,20 @@ async function refreshAll() {
                 refreshEvents()
 
             ]);
-
         }
-
 
         await refreshHistory();
 
-
         lastRefreshAt =
             Date.now();
-
 
         setRefreshStatus(
             new Date(
                 lastRefreshAt
             )
-            .toLocaleTimeString()
+            .toLocaleTimeString() +
+            " · Updated"
         );
-
 
         return true;
 
@@ -3703,7 +3892,7 @@ async function refreshAll() {
 
 
 // ============================================================
-// AUTO REFRESH V5.2.3
+// REFRESH JOB DATA ONLY
 // ============================================================
 
 async function refreshJobDataOnly() {
@@ -3711,16 +3900,15 @@ async function refreshJobDataOnly() {
     if (
         refreshInProgress ||
         !currentJob ||
-        endJobRunning
+        endJobRunning ||
+        agentStopping
     ) {
 
         return false;
-
     }
 
-
-    refreshInProgress = true;
-
+    refreshInProgress =
+        true;
 
     try {
 
@@ -3742,96 +3930,16 @@ async function refreshJobDataOnly() {
 
         ]);
 
-
         lastRefreshAt =
             Date.now();
-
 
         setRefreshStatus(
             new Date(
                 lastRefreshAt
             )
-            .toLocaleTimeString()
+            .toLocaleTimeString() +
+            " · Updated"
         );
-
-
-        return true;
-
-    }
-    catch {
-
-        setRefreshStatus(
-            new Date()
-                .toLocaleTimeString() +
-            " · Refresh Error"
-        );
-
-
-        return false;
-
-    }
-    finally {
-
-        refreshInProgress =
-            false;
-
-    }
-
-}
-
-
-// ============================================================
-// AUTO REFRESH V5.2.3
-// ============================================================
-
-async function refreshJobDataOnly() {
-
-    if (
-        refreshInProgress ||
-        !currentJob ||
-        endJobRunning
-    ) {
-
-        return false;
-
-    }
-
-
-    refreshInProgress = true;
-
-
-    try {
-
-        await Promise.all([
-
-            refreshSystem(),
-
-            refreshMetrics(),
-
-            refreshDiagnostics(),
-
-            refreshNetwork(),
-
-            refreshServices(),
-
-            refreshProcesses(),
-
-            refreshEvents()
-
-        ]);
-
-
-        lastRefreshAt =
-            Date.now();
-
-
-        setRefreshStatus(
-            new Date(
-                lastRefreshAt
-            )
-            .toLocaleTimeString()
-        );
-
 
         return true;
 
@@ -3865,31 +3973,22 @@ function startAutoRefresh() {
 
     stopAutoRefresh();
 
-
     refreshTimer =
         setInterval(
-            async () => {
+            async function () {
 
                 const online =
                     await checkAgent();
 
-
                 if (!online) {
-
-                    setRefreshStatus(
-                        new Date()
-                            .toLocaleTimeString() +
-                        " · Agent Offline"
-                    );
-
                     return;
-
                 }
-
 
                 if (
                     currentJob &&
-                    !endJobRunning
+                    !endJobRunning &&
+                    !agentStopping &&
+                    !fixRunning
                 ) {
 
                     await refreshJobDataOnly();
@@ -3919,6 +4018,484 @@ function stopAutoRefresh() {
 
         refreshTimer =
             null;
+    }
+
+}
+
+
+// ============================================================
+// FIX CENTER
+// ============================================================
+
+function renderFixCenter() {
+
+    const container =
+        document.getElementById(
+            "fixCenter"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    if (!currentJob) {
+
+        container.innerHTML =
+            `
+            <div class="empty">
+            Start a Job to load Fix Center.
+            </div>
+            `;
+
+        return;
+    }
+
+    container.innerHTML =
+        "";
+
+    FIX_ACTIONS.forEach(
+        action => {
+
+            const card =
+                document.createElement(
+                    "div"
+                );
+
+            card.className =
+                "fix-card";
+
+            card.innerHTML =
+                `
+                <h3>
+                ${escapeHtml(
+                    action.title
+                )}
+                </h3>
+
+                <div class="fix-meta">
+
+                    Category:
+                    ${escapeHtml(
+                        action.category
+                    )}
+
+                    <br>
+
+                    Impact:
+                    ${escapeHtml(
+                        action.impact
+                    )}
+
+                    · Admin:
+                    ${escapeHtml(
+                        action.admin
+                    )}
+
+                    <br>
+
+                    ${escapeHtml(
+                        action.description
+                    )}
+
+                </div>
+
+                <button
+                    class="blue small-button"
+                    onclick="executeFix('${action.id}')"
+                    ${fixRunning ? "disabled" : ""}>
+
+                    EXECUTE FIX
+
+                </button>
+                `;
+
+            container.appendChild(
+                card
+            );
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// FIX HISTORY
+// ============================================================
+
+function renderFixHistory() {
+
+    const container =
+        document.getElementById(
+            "fixHistory"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    const items =
+        actionLog.filter(
+            item =>
+                item.source ===
+                "FIX_ENGINE"
+        );
+
+    if (!items.length) {
+
+        container.innerHTML =
+            `
+            <div class="empty">
+            No fix actions executed.
+            </div>
+            `;
+
+        return;
+    }
+
+    container.innerHTML =
+        "";
+
+    items
+        .slice()
+        .reverse()
+        .forEach(
+            item => {
+
+                const div =
+                    document.createElement(
+                        "div"
+                    );
+
+                div.className =
+                    "action-item " +
+                    (
+                        item.result === "SUCCESS"
+                            ? "fix-success"
+                            : "fix-failed"
+                    );
+
+                div.innerHTML =
+                    `
+                    <div class="action-header">
+
+                        <strong>
+                        ${escapeHtml(
+                            item.action ||
+                            "Fix"
+                        )}
+                        </strong>
+
+                        <span
+                            class="badge ${
+                                item.result === "SUCCESS"
+                                    ? "badge-green"
+                                    : "badge-red"
+                            }">
+
+                            ${escapeHtml(
+                                item.result ||
+                                ""
+                            )}
+
+                        </span>
+
+                    </div>
+
+                    <div class="action-text">
+
+                    ${escapeHtml(
+                        item.message ||
+                        ""
+                    )}
+
+                    </div>
+
+                    <div
+                        class="muted"
+                        style="margin-top:8px;">
+
+                        ${escapeHtml(
+                            item.time ||
+                            ""
+                        )}
+
+                        ·
+
+                        ${escapeHtml(
+                            item.category ||
+                            "FIX"
+                        )}
+
+                    </div>
+                    `;
+
+                container.appendChild(
+                    div
+                );
+
+            }
+        );
+
+}
+
+
+// ============================================================
+// EXECUTE FIX
+// ============================================================
+
+async function executeFix(
+    actionId
+) {
+
+    if (
+        !currentJob ||
+        fixRunning ||
+        endJobRunning ||
+        agentStopping
+    ) {
+
+        return;
+    }
+
+    const action =
+        FIX_ACTIONS.find(
+            item =>
+                item.id ===
+                actionId
+        );
+
+    if (!action) {
+        return;
+    }
+
+    const confirmed =
+        confirm(
+            "Execute this repair action?\n\n" +
+
+            "Action: " +
+            action.title +
+            "\n" +
+
+            "Impact: " +
+            action.impact +
+            "\n" +
+
+            "Admin Required: " +
+            action.admin +
+            "\n\n" +
+
+            action.description
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+    fixRunning =
+        true;
+
+    renderFixCenter();
+
+    setRefreshStatus(
+        new Date()
+            .toLocaleTimeString() +
+        " · Running Fix: " +
+        action.title
+    );
+
+    showNotice(
+        "Running: " +
+        action.title,
+        0,
+        "info"
+    );
+
+    try {
+
+        const result =
+            await api(
+                "/fix",
+                {
+                    method:
+                        "POST",
+
+                    timeoutMs:
+                        180000,
+
+                    headers:
+                        {
+                            "Content-Type":
+                                "application/json"
+                        },
+
+                    body:
+                        JSON.stringify(
+                            {
+                                action:
+                                    actionId
+                            }
+                        )
+                }
+            );
+
+        const success =
+            !!(
+                result &&
+                result.success
+            );
+
+        const entry = {
+
+            time:
+                new Date()
+                    .toLocaleString(),
+
+            action:
+                action.title,
+
+            result:
+                success
+                    ? "SUCCESS"
+                    : "FAILED",
+
+            resolution:
+                success
+                    ? "RESOLVED"
+                    : "NOT_RESOLVED",
+
+            category:
+                action.category,
+
+            source:
+                "FIX_ENGINE",
+
+            message:
+                result &&
+                result.message
+                    ? result.message
+                    : (
+                        success
+                            ? "Fix completed."
+                            : "Fix failed."
+                    )
+
+        };
+
+        actionLog.push(
+            entry
+        );
+
+        saveActionLog();
+
+        renderActions();
+
+        renderFixHistory();
+
+        updateSummary();
+
+        if (success) {
+
+            showNotice(
+                action.title +
+                " completed: " +
+                entry.message,
+                8000,
+                "success"
+            );
+
+            setRefreshStatus(
+                new Date()
+                    .toLocaleTimeString() +
+                " · Fix SUCCESS"
+            );
+
+        }
+        else {
+
+            showNotice(
+                action.title +
+                " failed: " +
+                entry.message,
+                10000,
+                "error"
+            );
+
+            setRefreshStatus(
+                new Date()
+                    .toLocaleTimeString() +
+                " · Fix FAILED"
+            );
+
+        }
+
+        await refreshJobDataOnly();
+
+    }
+    catch (error) {
+
+        const entry = {
+
+            time:
+                new Date()
+                    .toLocaleString(),
+
+            action:
+                action.title,
+
+            result:
+                "FAILED",
+
+            resolution:
+                "NOT_RESOLVED",
+
+            category:
+                action.category,
+
+            source:
+                "FIX_ENGINE",
+
+            message:
+                error &&
+                error.message
+                    ? error.message
+                    : String(error)
+
+        };
+
+        actionLog.push(
+            entry
+        );
+
+        saveActionLog();
+
+        renderActions();
+
+        renderFixHistory();
+
+        updateSummary();
+
+        showNotice(
+            action.title +
+            " failed: " +
+            entry.message,
+            10000,
+            "error"
+        );
+
+        setRefreshStatus(
+            new Date()
+                .toLocaleTimeString() +
+            " · Fix ERROR"
+        );
+
+    }
+    finally {
+
+        fixRunning =
+            false;
+
+        renderFixCenter();
 
     }
 
@@ -3948,7 +4525,6 @@ function showTab(
             }
         );
 
-
     document
         .querySelectorAll(
             ".tab-button"
@@ -3963,29 +4539,24 @@ function showTab(
             }
         );
 
-
     const panel =
         document.getElementById(
             "tab-" +
             tabName
         );
 
-
     if (panel) {
 
         panel.classList.add(
             "active"
         );
-
     }
-
 
     if (button) {
 
         button.classList.add(
             "active"
         );
-
     }
 
 }
@@ -3997,18 +4568,11 @@ function showTab(
 
 async function endJob() {
 
-    if (
-        endJobRunning
-    ) {
-
+    if (endJobRunning) {
         return;
-
     }
 
-
-    if (
-        !currentJob
-    ) {
+    if (!currentJob) {
 
         showNotice(
             "There is no active job.",
@@ -4017,288 +4581,309 @@ async function endJob() {
         );
 
         return;
-
     }
 
+    if (fixRunning) {
+
+        showNotice(
+            "Please wait until the Fix action finishes.",
+            5000,
+            "error"
+        );
+
+        return;
+    }
+
+    const confirmed =
+        confirm(
+            "Close this diagnostic job and generate the report?\n\n" +
+            "Job: " +
+            currentJob.id +
+            "\n\n" +
+            "Actions recorded: " +
+            actionLog.length
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+    saveJobForm();
+
+    saveActionLog();
 
     endJobRunning =
         true;
 
+    stopAutoRefresh();
+
+    const startButton =
+        document.getElementById(
+            "startButton"
+        );
 
     const endButton =
         document.getElementById(
             "endButton"
         );
 
-
-    try {
-
-        while (
-            refreshInProgress
-        ) {
-
-            await sleep(100);
-
-        }
-
-
-        if (
-            !currentJob
-        ) {
-
-            showNotice(
-                "There is no active job.",
-                5000,
-                "error"
-            );
-
-            return;
-
-        }
-
-
-        saveJobForm();
-
-
-        const jobInfo =
-            getJobFormData();
-
-
-        const confirmed =
-            confirm(
-                "End this diagnostic job and generate the report?\n\n" +
-                "Job: " +
-                currentJob.id +
-                "\n\n" +
-                "Actions recorded: " +
-                actionLog.length
-            );
-
-
-        if (!confirmed) {
-
-            return;
-
-        }
-
-
-        if (endButton) {
-
-            endButton.disabled =
-                true;
-
-        }
-
-
-        showNotice(
-            "Ending job and generating report...",
-            15000,
-            "info"
+    const stopButton =
+        document.getElementById(
+            "stopAgentButton"
         );
 
+    if (startButton) {
+        startButton.disabled =
+            true;
+    }
+
+    if (endButton) {
+        endButton.disabled =
+            true;
+    }
+
+    if (stopButton) {
+        stopButton.disabled =
+            true;
+    }
+
+    setRefreshStatus(
+        new Date()
+            .toLocaleTimeString() +
+        " · Ending Job / Generating Report..."
+    );
+
+    showNotice(
+        "Closing Job and generating report...",
+        0,
+        "info"
+    );
+
+    try {
 
         const result =
             await api(
                 "/job/end",
                 {
-                    method: "POST",
-                    timeoutMs: 120000
+                    method:
+                        "POST",
+
+                    timeoutMs:
+                        120000
                 }
             );
 
-
         if (
+            !result ||
             !result.success
         ) {
 
             throw new Error(
-                result.message ||
-                "Unable to end job."
+                result &&
+                result.message
+                    ? result.message
+                    : "Unable to close Job."
             );
-
         }
 
-
         const finishedJob =
-            result.job;
-
+            result.job ||
+            null;
 
         lastReport =
-            result.report;
+            result.report ||
+            null;
 
-
-        if (
-            finishedJob
-        ) {
+        if (finishedJob) {
 
             localStorage.setItem(
                 "ITDiagV5_Completed_" +
                 finishedJob.id,
 
-                JSON.stringify({
+                JSON.stringify(
+                    {
+                        job:
+                            finishedJob,
 
-                    job:
-                        finishedJob,
+                        form:
+                            getJobFormData(),
 
-                    form:
-                        jobInfo,
-
-                    actions:
-                        actionLog
-
-                })
+                        actions:
+                            actionLog
+                    }
+                )
             );
-
         }
-
 
         currentJob =
             null;
 
+        actionLog =
+            [];
 
-        document
-            .getElementById(
+        currentDiagnostics =
+            null;
+
+        renderFixCenter();
+
+        renderFixHistory();
+
+        const dashboard =
+            document.getElementById(
                 "dashboard"
-            )
-            .classList.add(
+            );
+
+        if (dashboard) {
+
+            dashboard.classList.add(
                 "section-hidden"
             );
+        }
 
-
-        document
-            .getElementById(
+        const reportPath =
+            document.getElementById(
                 "reportPath"
-            )
-            .textContent =
-                result.report ||
-                "Report created.";
-
-
-        document
-            .getElementById(
-                "reportBox"
-            )
-            .classList.add(
-                "show"
             );
 
+        if (reportPath) {
+
+            reportPath.textContent =
+                result.report ||
+                "Report created.";
+        }
+
+        const reportBox =
+            document.getElementById(
+                "reportBox"
+            );
+
+        if (reportBox) {
+
+            reportBox.classList.add(
+                "show"
+            );
+        }
+
+        try {
+            await refreshHistory();
+        }
+        catch {
+        }
+
+        /*
+         * IMPORTANT:
+         *
+         * CLOSE JOB NEVER STOPS THE AGENT.
+         *
+         * /agent/stop is NOT called here.
+         */
+
+        agentStopping =
+            false;
+
+        lastAgentOnline =
+            true;
+
+        agentStatusFailures =
+            0;
+
+        const statusDot =
+            document.getElementById(
+                "statusDot"
+            );
+
+        const agentStatus =
+            document.getElementById(
+                "agentStatus"
+            );
+
+        if (statusDot) {
+
+            statusDot.classList.add(
+                "online"
+            );
+        }
+
+        if (agentStatus) {
+
+            agentStatus.textContent =
+                "Agent Online";
+        }
+
+        setRefreshStatus(
+            new Date()
+                .toLocaleTimeString() +
+            " · Job Closed · Agent Online"
+        );
+
+        if (startButton) {
+            startButton.disabled =
+                false;
+        }
+
+        if (endButton) {
+            endButton.disabled =
+                true;
+        }
+
+        if (stopButton) {
+            stopButton.disabled =
+                false;
+        }
 
         showNotice(
-            "Job " +
-            (
-                finishedJob?.id ||
-                ""
-            ) +
-            " ended successfully. Report created.",
+            "Job closed successfully. Agent is still online.",
             8000,
             "success"
         );
 
-
-        await refreshHistory();
-
-
-        /*
-         * Stop Agent after report creation.
-         */
-
-        setTimeout(
-            async () => {
-
-                try {
-
-                    await api(
-                        "/agent/stop",
-                        {
-                            method: "POST",
-                            timeoutMs: 5000
-                        }
-                    );
-
-                }
-                catch {
-
-                    /*
-                     * Agent may terminate before
-                     * browser receives response.
-                     */
-
-                }
-
-
-                const stopButton =
-                    document.getElementById(
-                        "stopAgentButton"
-                    );
-
-
-                if (endButton) {
-
-                    endButton.disabled =
-                        true;
-
-                }
-
-
-                if (stopButton) {
-
-                    stopButton.disabled =
-                        false;
-
-                }
-
-
-                await sleep(1200);
-
-
-                await checkAgent();
-
-
-                setRefreshStatus(
-                    new Date()
-                        .toLocaleTimeString() +
-                    (
-                        lastAgentOnline
-                            ? " · Agent Online"
-                            : " · Agent Offline"
-                    )
-                );
-
-            },
-            500
-        );
-
+        startAutoRefresh();
 
     }
     catch (error) {
 
         showNotice(
-            "Unable to end job: " +
-            error.message,
-            8000,
+            "Unable to close Job: " +
+            (
+                error &&
+                error.message
+                    ? error.message
+                    : error
+            ),
+            10000,
             "error"
         );
+
+        setRefreshStatus(
+            new Date()
+                .toLocaleTimeString() +
+            " · CLOSE JOB ERROR"
+        );
+
+        if (startButton) {
+            startButton.disabled =
+                false;
+        }
+
+        if (endButton) {
+            endButton.disabled =
+                !currentJob;
+        }
+
+        if (stopButton) {
+            stopButton.disabled =
+                false;
+        }
+
+        if (currentJob) {
+            startAutoRefresh();
+        }
 
     }
     finally {
 
         endJobRunning =
             false;
-
-
-        if (
-            endButton &&
-            currentJob
-        ) {
-
-            endButton.disabled =
-                false;
-
-        }
-
-
-        startAutoRefresh();
-
     }
 
 }
@@ -4310,9 +4895,7 @@ async function endJob() {
 
 async function openReport() {
 
-    if (
-        !lastReport
-    ) {
+    if (!lastReport) {
 
         showNotice(
             "No report path available.",
@@ -4321,9 +4904,7 @@ async function openReport() {
         );
 
         return;
-
     }
-
 
     try {
 
@@ -4332,10 +4913,7 @@ async function openReport() {
                 lastReport
             );
 
-
-        if (
-            jobId
-        ) {
+        if (jobId) {
 
             const result =
                 await api(
@@ -4345,21 +4923,18 @@ async function openReport() {
                     )
                 );
 
-
             if (
+                result &&
                 result.success
             ) {
 
                 return;
-
             }
-
         }
 
     }
     catch {
     }
-
 
     const fileUrl =
         "file:///" +
@@ -4370,7 +4945,6 @@ async function openReport() {
             "\\",
             "/"
         );
-
 
     window.open(
         fileUrl,
@@ -4397,7 +4971,6 @@ function extractJobIdFromReport(
         .split("/")
         .pop();
 
-
     return name.replace(
         /\.html$/i,
         ""
@@ -4407,108 +4980,229 @@ function extractJobIdFromReport(
 
 
 // ============================================================
-// STOP AGENT
+// STOP AGENT MANUALLY
 // ============================================================
 
 async function stopAgentManually() {
+
+    if (endJobRunning) {
+
+        showNotice(
+            "Please wait until CLOSE JOB has finished.",
+            5000,
+            "error"
+        );
+
+        return;
+    }
+
+    if (currentJob) {
+
+        showNotice(
+            "Please CLOSE JOB before stopping the Agent.",
+            6000,
+            "error"
+        );
+
+        return;
+    }
+
+    if (agentStopping) {
+        return;
+    }
 
     const confirmed =
         confirm(
             "Stop the local IT Diagnostic Agent?"
         );
 
-
     if (!confirmed) {
-
         return;
-
     }
 
+    agentStopping =
+        true;
+
+    stopAutoRefresh();
+
+    const startButton =
+        document.getElementById(
+            "startButton"
+        );
+
+    const endButton =
+        document.getElementById(
+            "endButton"
+        );
+
+    const stopButton =
+        document.getElementById(
+            "stopAgentButton"
+        );
+
+    const statusDot =
+        document.getElementById(
+            "statusDot"
+        );
+
+    const agentStatus =
+        document.getElementById(
+            "agentStatus"
+        );
+
+    if (startButton) {
+        startButton.disabled =
+            true;
+    }
+
+    if (endButton) {
+        endButton.disabled =
+            true;
+    }
+
+    if (stopButton) {
+        stopButton.disabled =
+            true;
+    }
+
+    if (statusDot) {
+        statusDot.classList.remove(
+            "online"
+        );
+    }
+
+    if (agentStatus) {
+
+        agentStatus.textContent =
+            "Stopping Agent...";
+    }
+
+    setRefreshStatus(
+        new Date()
+            .toLocaleTimeString() +
+        " · Stopping Agent..."
+    );
+
+    showNotice(
+        "Stopping local Agent...",
+        0,
+        "info"
+    );
 
     try {
 
-        showNotice(
-            "Stopping local Agent...",
-            5000,
-            "info"
-        );
+        try {
 
+            await api(
+                "/agent/stop",
+                {
+                    method:
+                        "POST",
 
-        await api(
-            "/agent/stop",
-            {
-                method: "POST",
-                timeoutMs: 5000
-            }
-        );
-
-
-        await sleep(1200);
-
-
-        const online =
-            await checkAgent();
-
-
-        if (online) {
-
-            showNotice(
-                "Agent is still online.",
-                5000,
-                "error"
+                    timeoutMs:
+                        5000
+                }
             );
 
         }
-        else {
-
-            showNotice(
-                "Agent is offline.",
-                5000,
-                "success"
-            );
-
+        catch {
+            /*
+             * Agent may terminate before
+             * browser receives the response.
+             */
         }
 
+        await sleep(
+            1500
+        );
+
+        lastAgentOnline =
+            false;
+
+        agentStatusFailures =
+            0;
+
+        agentStopping =
+            false;
+
+        if (statusDot) {
+
+            statusDot.classList.remove(
+                "online"
+            );
+        }
+
+        if (agentStatus) {
+
+            agentStatus.textContent =
+                "Agent Stopped";
+        }
 
         setRefreshStatus(
             new Date()
                 .toLocaleTimeString() +
-            (
-                online
-                    ? " · Agent Online"
-                    : " · Agent Offline"
-            )
+            " · Agent Stopped"
+        );
+
+        if (startButton) {
+            startButton.disabled =
+                false;
+        }
+
+        if (endButton) {
+            endButton.disabled =
+                true;
+        }
+
+        if (stopButton) {
+            stopButton.disabled =
+                false;
+        }
+
+        showNotice(
+            "Agent stopped successfully.",
+            7000,
+            "success"
         );
 
     }
     catch (error) {
 
-        await sleep(1200);
+        agentStopping =
+            false;
 
-
-        const online =
-            await checkAgent();
-
-
-        if (!online) {
-
-            showNotice(
-                "Agent stopped.",
-                5000,
-                "success"
-            );
-
+        if (startButton) {
+            startButton.disabled =
+                false;
         }
-        else {
 
-            showNotice(
-                "Agent stop request failed: " +
-                error.message,
-                8000,
-                "error"
-            );
-
+        if (endButton) {
+            endButton.disabled =
+                true;
         }
+
+        if (stopButton) {
+            stopButton.disabled =
+                false;
+        }
+
+        showNotice(
+            "Agent stop failed: " +
+            (
+                error &&
+                error.message
+                    ? error.message
+                    : error
+            ),
+            8000,
+            "error"
+        );
+
+        setRefreshStatus(
+            new Date()
+                .toLocaleTimeString() +
+            " · STOP AGENT ERROR"
+        );
 
     }
 
@@ -4528,16 +5222,17 @@ async function refreshHistory() {
                 "/history"
             );
 
-
         const table =
             document.getElementById(
                 "historyTable"
             );
 
+        if (!table) {
+            return;
+        }
 
         table.innerHTML =
             "";
-
 
         const history =
             Array.isArray(
@@ -4545,7 +5240,6 @@ async function refreshHistory() {
             )
                 ? result.data
                 : [];
-
 
         for (
             const item
@@ -4558,7 +5252,6 @@ async function refreshHistory() {
                 document.createElement(
                     "tr"
                 );
-
 
             row.innerHTML =
                 `
@@ -4598,22 +5291,25 @@ async function refreshHistory() {
                 </td>
 
                 <td>
-                    <span class="badge badge-green">
+
+                    <span
+                        class="badge badge-green">
+
                     ${escapeHtml(
                         item.status ||
                         "COMPLETED"
                     )}
+
                     </span>
+
                 </td>
                 `;
-
 
             table.appendChild(
                 row
             );
 
         }
-
 
         if (
             !history.length
@@ -4622,6 +5318,7 @@ async function refreshHistory() {
             table.innerHTML =
                 `
                 <tr>
+
                     <td
                         colspan="6"
                         class="empty">
@@ -4629,6 +5326,7 @@ async function refreshHistory() {
                         No job history.
 
                     </td>
+
                 </tr>
                 `;
 
@@ -4655,13 +5353,9 @@ function setText(
             id
         );
 
-
     if (!element) {
-
         return;
-
     }
-
 
     if (
         value === undefined ||
@@ -4738,19 +5432,14 @@ function escapeHtml(
                 id
             );
 
-
         if (!element) {
-
             return;
-
         }
-
 
         element.addEventListener(
             "input",
             saveJobForm
         );
-
 
         element.addEventListener(
             "change",
@@ -4766,6 +5455,10 @@ function escapeHtml(
 // ============================================================
 
 (async function init() {
+
+    renderFixCenter();
+
+    renderFixHistory();
 
     await refreshAll();
 
