@@ -1,8 +1,18 @@
 # ============================================================
-# IT DIAG LAUNCHER V5.1
+# IT DIAG LAUNCHER V5.3.3
+# ============================================================
+# Purpose:
+#   - Start IT Diagnostic Agent
+#   - Automatically request Administrator privilege
+#   - Keep Agent elevated for Fix Engine actions
+#   - Do not require manual "Run as Administrator"
 # ============================================================
 
 $ErrorActionPreference = "SilentlyContinue"
+
+# ------------------------------------------------------------
+# BASE DIRECTORY
+# ------------------------------------------------------------
 
 $BaseDir =
     Split-Path `
@@ -13,6 +23,11 @@ $AgentScript =
     Join-Path `
         $BaseDir `
         "Start-Agent.ps1"
+
+
+# ------------------------------------------------------------
+# CHECK AGENT SCRIPT
+# ------------------------------------------------------------
 
 if (-not (Test-Path $AgentScript)) {
 
@@ -28,8 +43,84 @@ if (-not (Test-Path $AgentScript)) {
     exit 1
 }
 
+
 # ------------------------------------------------------------
-# Check whether Agent is already online
+# CHECK CURRENT PRIVILEGE
+# ------------------------------------------------------------
+
+try {
+
+    $identity =
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+
+    $principal =
+        New-Object `
+            Security.Principal.WindowsPrincipal(
+                $identity
+            )
+
+    $isAdmin =
+        $principal.IsInRole(
+            [Security.Principal.WindowsBuiltInRole]::Administrator
+        )
+
+}
+catch {
+
+    $isAdmin = $false
+}
+
+
+# ------------------------------------------------------------
+# SELF-ELEVATE
+# ------------------------------------------------------------
+# If Launcher is not Administrator:
+#   restart this same Launcher using UAC
+#   then exit the non-elevated process
+#
+# This means the Agent launched afterwards will inherit
+# Administrator privileges.
+# ------------------------------------------------------------
+
+if (-not $isAdmin) {
+
+    try {
+
+        $launcherPath =
+            (Resolve-Path $MyInvocation.MyCommand.Path).Path
+
+        Start-Process `
+            -FilePath "powershell.exe" `
+            -Verb RunAs `
+            -ArgumentList @(
+                "-NoLogo"
+                "-NoProfile"
+                "-ExecutionPolicy"
+                "Bypass"
+                "-File"
+                "`"$launcherPath`""
+            ) |
+            Out-Null
+
+    }
+    catch {
+
+        Add-Type -AssemblyName PresentationFramework
+
+        [System.Windows.MessageBox]::Show(
+            "Administrator permission is required to start IT Diagnostic Agent.",
+            "IT Diagnostic Agent",
+            "OK",
+            "Warning"
+        ) | Out-Null
+    }
+
+    exit 0
+}
+
+
+# ------------------------------------------------------------
+# AGENT ALREADY ONLINE CHECK
 # ------------------------------------------------------------
 
 try {
@@ -50,10 +141,12 @@ try {
 
 }
 catch {
+
 }
 
+
 # ------------------------------------------------------------
-# Create temporary startup command
+# TEMP WORK DIRECTORY
 # ------------------------------------------------------------
 
 $tempRoot =
@@ -67,6 +160,11 @@ New-Item `
     -Path $tempRoot |
     Out-Null
 
+
+# ------------------------------------------------------------
+# TEMP RUNNER
+# ------------------------------------------------------------
+
 $runner =
     Join-Path `
         $tempRoot `
@@ -74,6 +172,11 @@ $runner =
 
 $agentFull =
     (Resolve-Path $AgentScript).Path
+
+
+# ------------------------------------------------------------
+# CREATE AGENT RUNNER
+# ------------------------------------------------------------
 
 $cmd = @"
 @echo off
@@ -85,12 +188,21 @@ Set-Content `
     -Value $cmd `
     -Encoding ASCII
 
+
 # ------------------------------------------------------------
-# Start Agent
+# START ELEVATED AGENT
+# ------------------------------------------------------------
+# Launcher itself is already elevated at this point.
+# Therefore Agent inherits Administrator privilege.
 # ------------------------------------------------------------
 
 Start-Process `
     -FilePath $runner `
     -WindowStyle Hidden
+
+
+# ------------------------------------------------------------
+# EXIT LAUNCHER
+# ------------------------------------------------------------
 
 exit 0
