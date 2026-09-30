@@ -1421,6 +1421,10 @@ function Invoke-FixAction {
         [string]$ActionId
     )
 
+    # --------------------------------------------------------
+    # NORMALIZE ACTION
+    # --------------------------------------------------------
+
     if (
         [string]::IsNullOrWhiteSpace(
             $ActionId
@@ -1428,31 +1432,67 @@ function Invoke-FixAction {
     ) {
 
         return @{
-            success =
-                $false
-
-            message =
-                "Fix action is required."
+            success = $false
+            action  = ""
+            message = "Fix action is required."
         }
     }
 
     $key =
-        $ActionId.ToUpperInvariant()
+        ([string]$ActionId).Trim().ToUpperInvariant()
+
+
+    # --------------------------------------------------------
+    # EXPLICIT SAFE ALLOWLIST
+    #
+    # Do not depend only on FixCatalog.ContainsKey().
+    # This prevents runtime catalog/scope issues from
+    # incorrectly rejecting valid actions.
+    # --------------------------------------------------------
+
+    $allowedActions = @(
+        "FLUSH_DNS"
+        "RENEW_IP"
+        "RESET_WINSOCK"
+        "RESET_TCPIP"
+        "RESTART_ADAPTER"
+        "TEST_INTERNET"
+        "TEST_DNS"
+        "RESTART_EXPLORER"
+        "CLEAR_USER_TEMP"
+        "CLEAR_WINDOWS_TEMP"
+        "RESTART_SPOOLER"
+        "CLEAR_PRINT_QUEUE"
+        "RESTART_WUAUSERV"
+        "RESET_WINDOWS_UPDATE"
+        "CHECK_FIREWALL"
+        "SFC_SCAN"
+        "DISM_RESTOREHEALTH"
+    )
+
+
+    # --------------------------------------------------------
+    # ALLOWLIST CHECK
+    # --------------------------------------------------------
 
     if (
-        -not $global:FixCatalog.ContainsKey(
-            $key
-        )
+        $allowedActions -notcontains $key
     ) {
 
-        return @{
-            success =
-                $false
+        Write-AgentError `
+            "FIX REJECTED. RawAction=[$ActionId] NormalizedAction=[$key]"
 
-            message =
-                "Fix action is not allowed."
+        return @{
+            success = $false
+            action  = $key
+            message = "Fix action is not allowed."
         }
     }
+
+
+    # --------------------------------------------------------
+    # ACTIVE JOB CHECK
+    # --------------------------------------------------------
 
     if (
         $null -eq
@@ -1460,16 +1500,170 @@ function Invoke-FixAction {
     ) {
 
         return @{
-            success =
-                $false
-
-            message =
-                "No active job."
+            success = $false
+            action  = $key
+            message = "No active job."
         }
     }
 
-    $meta =
-        $global:FixCatalog[$key]
+
+    # --------------------------------------------------------
+    # FIX METADATA
+    # --------------------------------------------------------
+
+    $meta = $null
+
+    if (
+        $null -ne
+        $global:FixCatalog
+    ) {
+
+        try {
+
+            if (
+                $global:FixCatalog.ContainsKey(
+                    $key
+                )
+            ) {
+
+                $meta =
+                    $global:FixCatalog[$key]
+            }
+
+        }
+        catch {
+
+            $meta = $null
+        }
+    }
+
+
+    # --------------------------------------------------------
+    # FALLBACK METADATA
+    # --------------------------------------------------------
+
+    if (
+        $null -eq
+        $meta
+    ) {
+
+        $meta =
+            @{
+                category = "GENERAL"
+                title    = $key
+                admin    = $false
+            }
+
+        switch ($key) {
+
+            "FLUSH_DNS" {
+                $meta.category = "NETWORK"
+                $meta.title = "Flush DNS"
+                $meta.admin = $false
+            }
+
+            "RENEW_IP" {
+                $meta.category = "NETWORK"
+                $meta.title = "Renew IP"
+                $meta.admin = $true
+            }
+
+            "RESET_WINSOCK" {
+                $meta.category = "NETWORK"
+                $meta.title = "Reset Winsock"
+                $meta.admin = $true
+            }
+
+            "RESET_TCPIP" {
+                $meta.category = "NETWORK"
+                $meta.title = "Reset TCP/IP"
+                $meta.admin = $true
+            }
+
+            "RESTART_ADAPTER" {
+                $meta.category = "NETWORK"
+                $meta.title = "Restart Network Adapter"
+                $meta.admin = $true
+            }
+
+            "TEST_INTERNET" {
+                $meta.category = "NETWORK"
+                $meta.title = "Test Internet"
+                $meta.admin = $false
+            }
+
+            "TEST_DNS" {
+                $meta.category = "NETWORK"
+                $meta.title = "Test DNS"
+                $meta.admin = $false
+            }
+
+            "RESTART_EXPLORER" {
+                $meta.category = "WINDOWS"
+                $meta.title = "Restart Explorer"
+                $meta.admin = $false
+            }
+
+            "CLEAR_USER_TEMP" {
+                $meta.category = "WINDOWS"
+                $meta.title = "Clear User Temp"
+                $meta.admin = $false
+            }
+
+            "CLEAR_WINDOWS_TEMP" {
+                $meta.category = "WINDOWS"
+                $meta.title = "Clear Windows Temp"
+                $meta.admin = $true
+            }
+
+            "RESTART_SPOOLER" {
+                $meta.category = "PRINTER"
+                $meta.title = "Restart Print Spooler"
+                $meta.admin = $true
+            }
+
+            "CLEAR_PRINT_QUEUE" {
+                $meta.category = "PRINTER"
+                $meta.title = "Clear Print Queue"
+                $meta.admin = $true
+            }
+
+            "RESTART_WUAUSERV" {
+                $meta.category = "WINDOWS UPDATE"
+                $meta.title = "Restart Windows Update"
+                $meta.admin = $true
+            }
+
+            "RESET_WINDOWS_UPDATE" {
+                $meta.category = "WINDOWS UPDATE"
+                $meta.title = "Reset Windows Update Components"
+                $meta.admin = $true
+            }
+
+            "CHECK_FIREWALL" {
+                $meta.category = "SECURITY"
+                $meta.title = "Check Windows Firewall"
+                $meta.admin = $false
+            }
+
+            "SFC_SCAN" {
+                $meta.category = "WINDOWS"
+                $meta.title = "SFC Scan"
+                $meta.admin = $true
+            }
+
+            "DISM_RESTOREHEALTH" {
+                $meta.category = "WINDOWS"
+                $meta.title = "DISM RestoreHealth"
+                $meta.admin = $true
+            }
+        }
+    }
+
+
+    # --------------------------------------------------------
+    # ADMIN CHECK
+    # --------------------------------------------------------
 
     if (
         $meta.admin -and
@@ -1488,21 +1682,21 @@ function Invoke-FixAction {
             $message
 
         return @{
-            success =
-                $false
-
-            action =
-                $key
-
-            message =
-                $message
+            success = $false
+            action  = $key
+            message = $message
         }
     }
 
+
+    # --------------------------------------------------------
+    # EXECUTE FIX
+    # --------------------------------------------------------
+
     try {
 
-        $message =
-            ""
+        $message = ""
+
 
         switch ($key) {
 
@@ -1551,45 +1745,49 @@ function Invoke-FixAction {
 
             "RESTART_ADAPTER" {
 
-                $adapter =
-                    Get-NetAdapter |
+                $adapters =
+                    Get-NetAdapter `
+                        -Physical `
+                        -ErrorAction Stop |
                     Where-Object {
-                        $_.Status -eq "Up"
-                    } |
-                    Select-Object -First 1
+                        $_.Status -ne "Disabled"
+                    }
 
                 if (
-                    -not $adapter
+                    $null -eq $adapters
                 ) {
 
-                    throw `
-                        "No active network adapter was found."
+                    throw "No physical network adapter was found."
                 }
 
-                Restart-NetAdapter `
-                    -Name $adapter.Name `
-                    -Confirm:$false `
-                    -ErrorAction Stop
+                foreach (
+                    $adapter in $adapters
+                ) {
+
+                    Restart-NetAdapter `
+                        -Name $adapter.Name `
+                        -Confirm:$false `
+                        -ErrorAction Stop
+                }
 
                 $message =
-                    "Network adapter '$($adapter.Name)' restarted."
+                    "Network adapter restart completed."
             }
 
 
             "TEST_INTERNET" {
 
-                $ok =
+                $test =
                     Test-Connection `
                         -ComputerName "1.1.1.1" `
-                        -Count 2 `
+                        -Count 1 `
                         -Quiet `
                         -ErrorAction SilentlyContinue
 
-                if ($ok) {
+                if ($test) {
 
                     $message =
                         "Internet connectivity test succeeded."
-
                 }
                 else {
 
@@ -1601,13 +1799,23 @@ function Invoke-FixAction {
 
             "TEST_DNS" {
 
-                Resolve-DnsName `
-                    -Name "example.com" `
-                    -ErrorAction Stop |
-                    Out-Null
+                $dns =
+                    Resolve-DnsName `
+                        "www.microsoft.com" `
+                        -ErrorAction Stop
 
-                $message =
-                    "DNS resolution succeeded for example.com."
+                if (
+                    $null -ne $dns
+                ) {
+
+                    $message =
+                        "DNS resolution test succeeded."
+                }
+                else {
+
+                    throw `
+                        "DNS resolution test failed."
+                }
             }
 
 
@@ -1630,41 +1838,55 @@ function Invoke-FixAction {
 
             "CLEAR_USER_TEMP" {
 
-                $temp =
-                    [IO.Path]::GetTempPath()
+                $tempPath =
+                    $env:TEMP
 
-                Get-ChildItem `
-                    -LiteralPath $temp `
-                    -Force `
-                    -ErrorAction SilentlyContinue |
-                    Remove-Item `
-                        -Recurse `
+                if (
+                    Test-Path `
+                        -LiteralPath `
+                        $tempPath
+                ) {
+
+                    Get-ChildItem `
+                        -LiteralPath `
+                        $tempPath `
                         -Force `
-                        -ErrorAction SilentlyContinue
+                        -ErrorAction SilentlyContinue |
+                        Remove-Item `
+                            -Recurse `
+                            -Force `
+                            -ErrorAction SilentlyContinue
+                }
 
                 $message =
-                    "User Temp cleanup completed where files were removable."
+                    "User temporary files cleanup completed."
             }
 
 
             "CLEAR_WINDOWS_TEMP" {
 
-                $temp =
-                    Join-Path `
-                        $env:WINDIR `
-                        "Temp"
+                $tempPath =
+                    "$env:WINDIR\Temp"
 
-                Get-ChildItem `
-                    -LiteralPath $temp `
-                    -Force `
-                    -ErrorAction SilentlyContinue |
-                    Remove-Item `
-                        -Recurse `
+                if (
+                    Test-Path `
+                        -LiteralPath `
+                        $tempPath
+                ) {
+
+                    Get-ChildItem `
+                        -LiteralPath `
+                        $tempPath `
                         -Force `
-                        -ErrorAction SilentlyContinue
+                        -ErrorAction SilentlyContinue |
+                        Remove-Item `
+                            -Recurse `
+                            -Force `
+                            -ErrorAction SilentlyContinue
+                }
 
                 $message =
-                    "Windows Temp cleanup completed where files were removable."
+                    "Windows temporary files cleanup completed."
             }
 
 
@@ -1687,25 +1909,31 @@ function Invoke-FixAction {
                     -Force `
                     -ErrorAction Stop
 
-                $spool =
-                    Join-Path `
-                        $env:WINDIR `
-                        "System32\spool\PRINTERS"
+                $printPath =
+                    "$env:WINDIR\System32\spool\PRINTERS"
 
-                Get-ChildItem `
-                    -LiteralPath $spool `
-                    -Force `
-                    -ErrorAction SilentlyContinue |
-                    Remove-Item `
+                if (
+                    Test-Path `
+                        -LiteralPath `
+                        $printPath
+                ) {
+
+                    Get-ChildItem `
+                        -LiteralPath `
+                        $printPath `
                         -Force `
-                        -ErrorAction SilentlyContinue
+                        -ErrorAction SilentlyContinue |
+                        Remove-Item `
+                            -Force `
+                            -ErrorAction SilentlyContinue
+                }
 
                 Start-Service `
                     -Name Spooler `
                     -ErrorAction Stop
 
                 $message =
-                    "Print queue cleared and Print Spooler restarted."
+                    "Print queue cleared and Spooler restarted."
             }
 
 
@@ -1738,34 +1966,37 @@ function Invoke-FixAction {
                     -Force `
                     -ErrorAction SilentlyContinue
 
-                $sd =
-                    Join-Path `
-                        $env:WINDIR `
-                        "SoftwareDistribution"
-
-                $sdOld =
-                    Join-Path `
-                        $env:WINDIR `
-                        "SoftwareDistribution.V5Backup"
+                $softwareDistribution =
+                    "$env:WINDIR\SoftwareDistribution"
 
                 if (
-                    Test-Path $sdOld
+                    Test-Path `
+                        -LiteralPath `
+                        $softwareDistribution
                 ) {
 
-                    Remove-Item `
-                        $sdOld `
-                        -Recurse `
-                        -Force `
-                        -ErrorAction SilentlyContinue
-                }
+                    $backup =
+                        "$softwareDistribution.old"
 
-                if (
-                    Test-Path $sd
-                ) {
+                    if (
+                        Test-Path `
+                            -LiteralPath `
+                            $backup
+                    ) {
+
+                        Remove-Item `
+                            -LiteralPath `
+                            $backup `
+                            -Recurse `
+                            -Force `
+                            -ErrorAction SilentlyContinue
+                    }
 
                     Rename-Item `
-                        $sd `
-                        "SoftwareDistribution.V5Backup" `
+                        -LiteralPath `
+                        $softwareDistribution `
+                        -NewName `
+                        "SoftwareDistribution.old" `
                         -ErrorAction SilentlyContinue
                 }
 
@@ -1782,88 +2013,101 @@ function Invoke-FixAction {
                     -ErrorAction SilentlyContinue
 
                 $message =
-                    "Windows Update components were reset where possible."
+                    "Windows Update components reset."
             }
 
 
             "CHECK_FIREWALL" {
 
                 $profiles =
-                    Get-NetFirewallProfile |
-                    Select-Object `
-                        Name,
-                        Enabled
+                    Get-NetFirewallProfile `
+                        -ErrorAction Stop
+
+                $enabled =
+                    @(
+                        $profiles |
+                        Where-Object {
+                            $_.Enabled -eq $true
+                        }
+                    ).Count
+
+                $total =
+                    @(
+                        $profiles
+                    ).Count
 
                 $message =
-                    (
-                        $profiles |
-                        ForEach-Object {
-
-                            "$($_.Name)=$($_.Enabled)"
-
-                        }
-                    ) -join ", "
+                    "Windows Firewall profiles enabled: $enabled / $total."
             }
 
 
             "SFC_SCAN" {
 
-                $p =
-                    Start-Process `
-                        -FilePath `
-                            "$env:WINDIR\System32\sfc.exe" `
-                        -ArgumentList `
-                            "/scannow" `
-                        -Wait `
-                        -PassThru `
-                        -WindowStyle Hidden
+                $output =
+                    & sfc.exe /scannow 2>&1
+
+                $lastLines =
+                    @(
+                        $output |
+                        Select-Object -Last 8
+                    ) -join "`n"
 
                 if (
-                    $p.ExitCode -eq 0
+                    [string]::IsNullOrWhiteSpace(
+                        $lastLines
+                    )
                 ) {
 
-                    $message =
-                        "SFC scan completed successfully."
-
+                    $lastLines =
+                        "SFC scan completed."
                 }
-                else {
 
-                    throw `
-                        "SFC completed with exit code $($p.ExitCode)."
-                }
+                $message =
+                    $lastLines
             }
 
 
             "DISM_RESTOREHEALTH" {
 
-                $p =
-                    Start-Process `
-                        -FilePath `
-                            "$env:WINDIR\System32\DISM.exe" `
-                        -ArgumentList `
-                            "/Online",
-                            "/Cleanup-Image",
-                            "/RestoreHealth" `
-                        -Wait `
-                        -PassThru `
-                        -WindowStyle Hidden
+                $output =
+                    & DISM.exe `
+                        /Online `
+                        /Cleanup-Image `
+                        /RestoreHealth `
+                        2>&1
+
+                $lastLines =
+                    @(
+                        $output |
+                        Select-Object -Last 8
+                    ) -join "`n"
 
                 if (
-                    $p.ExitCode -eq 0
+                    [string]::IsNullOrWhiteSpace(
+                        $lastLines
+                    )
                 ) {
 
-                    $message =
-                        "DISM RestoreHealth completed successfully."
-
+                    $lastLines =
+                        "DISM RestoreHealth completed."
                 }
-                else {
 
-                    throw `
-                        "DISM completed with exit code $($p.ExitCode)."
-                }
+                $message =
+                    $lastLines
             }
 
+
+            default {
+
+                throw `
+                    "No execution handler exists for action [$key]."
+            }
         }
+
+
+        # ----------------------------------------------------
+        # SUCCESS LOG
+        # ----------------------------------------------------
 
         Add-FixActionLog `
             $meta.title `
@@ -1871,21 +2115,13 @@ function Invoke-FixAction {
             "SUCCESS" `
             $message
 
-        Write-AgentInfo `
-            "FIX SUCCESS: $($meta.title)"
 
         return @{
-            success =
-                $true
-
-            action =
-                $key
-
-            category =
-                $meta.category
-
-            message =
-                $message
+            success = $true
+            action  = $key
+            category = $meta.category
+            title   = $meta.title
+            message = $message
         }
 
     }
@@ -1901,23 +2137,16 @@ function Invoke-FixAction {
             $message
 
         Write-AgentError `
-            "FIX FAILED: $($meta.title) - $message"
+            "FIX FAILED [$key] $message"
 
         return @{
-            success =
-                $false
-
-            action =
-                $key
-
-            category =
-                $meta.category
-
-            message =
-                $message
+            success = $false
+            action  = $key
+            category = $meta.category
+            title   = $meta.title
+            message = $message
         }
     }
-
 }
 
 
@@ -3525,9 +3754,7 @@ try {
                         Read-RequestBody `
                             $request
 
-                    $actionId =
-                        [string]
-                        $data.action
+                    $actionId = [string]$data.action
 
                     Send-JsonResponse `
                         $context `
